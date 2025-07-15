@@ -7,7 +7,10 @@
 - [ ] **Testing**:
   - [x] Write comprehensive integration test for the `verifyQuestCompletion` endpoint.
   - [x] Add tests for the Aptos reward distribution flow.
-  - [ ] Write tests for other quest endpoints (create, join, complete, etc.).
+  - [x] Write tests for `createQuest` endpoint.
+  - [ ] Write tests for `joinQuest` endpoint.
+  - [ ] Write tests for `completeQuest` endpoint.
+  - [ ] Write tests for `updateQuest` and `deleteQuest` endpoints.
 - [x] **User Management**:
   - [x] Implement the core User Management API service endpoints (Profile Get/Update, Follow/Unfollow).
   - [x] Expand the `users` table schema to include profile details and Aptos wallet address.

@@ -1,6 +1,7 @@
 import request from 'supertest';
 import express, { Request, Response, NextFunction } from 'express';
-import { verifyQuestCompletion } from '../quests.controller';
+import { Quest } from '../quests.model';
+import { createQuest, verifyQuestCompletion } from '../quests.controller';
 import pool from '../../../../config/database';
 import AptosService from '../../blockchain/aptos.service';
 import { protect } from '../../../../middleware/auth.middleware';
@@ -36,6 +37,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.post('/quests/:id/verify', (req, res, next) => mockedProtect(req, res, next), verifyQuestCompletion);
+app.post('/quests', (req, res, next) => mockedProtect(req, res, next), createQuest);
 
 describe('Quests Controller - POST /quests/:id/verify', () => {
   beforeEach(() => {
@@ -60,7 +62,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
       // 1. BEGIN
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       // 2. Fetch quest to verify creator
-      .mockResolvedValueOnce({ rows: [{ creator_id: verifierId, reward_amount: 500000 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ creator_id: verifierId, reward_amount: '500000' }], rowCount: 1 })
       // 3. Fetch participant to verify status
       .mockResolvedValueOnce({ rows: [{ status: 'submitted' }], rowCount: 1 })
       // 4. UPDATE quest_participants status
@@ -92,7 +94,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
 
     // Verify reward distribution was called
-    const expectedReward = 500000; // The amount from the mocked quest data
+    const expectedReward = 500000; // The amount from the mocked quest data, parsed to a number
     expect(AptosService.distributeQuestRewards).toHaveBeenCalledWith(aptosAddress, expectedReward);
   });
 
@@ -117,7 +119,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
       // 1. BEGIN
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       // 2. Fetch quest to find the actual creator is '1'
-      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: 500000 }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 });
 
     const response = await request(app)
       .post(`/quests/${questId}/verify`)
@@ -149,7 +151,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
       // 1. BEGIN
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       // 2. Fetch quest
-      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: 500000 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 })
       // 3. Fetch participant with 'verified' status, which is not allowed
       .mockResolvedValueOnce({ rows: [{ status: 'verified' }], rowCount: 1 });
 
@@ -184,7 +186,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
       // 1. BEGIN
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       // 2. Fetch quest
-      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: 500000 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 })
       // 3. Fetch participant
       .mockResolvedValueOnce({ rows: [{ status: 'submitted' }], rowCount: 1 })
       // 4. Update participant status
@@ -207,5 +209,123 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
     expect(response.body.message).toBe('Quest completion verified successfully.');
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     expect(AptosService.distributeQuestRewards).not.toHaveBeenCalled();
+  });
+});
+
+describe('Quests Controller - POST /quests', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Provide a default mock implementation for the protect middleware
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      // This default mock simulates an unauthenticated user.
+      // Tests that require an authenticated user will override this implementation.
+      next();
+    });
+  });
+
+  it('should create a new quest successfully', async () => {
+    const mockUserId = '1';
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: mockUserId };
+      next();
+    });
+
+    // Mock Date.now() to make the timestamps deterministic
+    const MOCK_NOW = 1735689600000; // Corresponds to 2025-01-01T00:00:00.000Z
+    const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => MOCK_NOW);
+
+
+
+    const expectedExpiresAtDate = new Date(MOCK_NOW + 86400000);
+    const expectedExpiresAtString = expectedExpiresAtDate.toISOString();
+    const expectedCreatedAtString = new Date(MOCK_NOW).toISOString();
+
+    const newQuestData = {
+      title: 'Test Quest',
+      description: 'A quest for testing',
+      reward: 100,
+      currency: 'Lunoa' as const,
+      type: 'social' as const,
+      expires_at: expectedExpiresAtString, // Sent as a string
+    };
+
+    const mockDbResponse = {
+      id: '101',
+      creator_id: mockUserId,
+      title: newQuestData.title,
+      description: newQuestData.description,
+      reward: String(newQuestData.reward),
+      currency: newQuestData.currency,
+      type: newQuestData.type,
+      expires_at: expectedExpiresAtString,
+      status: 'active',
+      created_at: expectedCreatedAtString,
+    };
+
+    (pool.query as jest.Mock).mockResolvedValue({ rows: [mockDbResponse] });
+
+    const response = await request(app)
+      .post('/quests')
+      .send(newQuestData);
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(mockDbResponse);
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.any(String),
+      [
+        newQuestData.title,
+        newQuestData.description,
+        mockUserId,
+        newQuestData.reward,
+        newQuestData.currency,
+        newQuestData.type,
+        expectedExpiresAtDate, // Assert that a Date object is passed
+      ]
+    );
+
+    // Restore the original Date.now()
+    mockDateNow.mockRestore();
+  });
+
+  it('should return 400 for invalid quest data', async () => {
+    const mockUserId = '1';
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: mockUserId };
+      next();
+    });
+
+    const invalidQuestData = {
+      title: 'Test Quest',
+      description: 'This is a valid description.',
+      // reward is missing
+      currency: 'Lunoa' as const,
+      type: 'social' as const,
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+    };
+
+    const response = await request(app)
+      .post('/quests')
+      .send(invalidQuestData);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('"reward" is required');
+  });
+
+  it('should return 401 if user is not authenticated', async () => {
+    // Using the default unauthenticated mock for protect middleware.
+    // We send a valid body to ensure the request passes validation and is stopped by the auth middleware.
+    const validQuestData = {
+      title: 'Unauthorized Quest',
+      description: 'This should not be created',
+      reward: 50,
+      currency: 'Lunoa' as const,
+      type: 'social' as const,
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+    };
+    const response = await request(app).post('/quests').send(validQuestData);
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe('Not authorized to create a quest.');
   });
 });

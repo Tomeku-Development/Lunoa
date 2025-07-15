@@ -36,8 +36,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.post('/quests/:id/verify', (req, res, next) => mockedProtect(req, res, next), verifyQuestCompletion);
-app.post('/quests', (req, res, next) => mockedProtect(req, res, next), createQuest);
+import apiV1 from '../..'; // Import the main v1 router
+
+app.use('/api/v1', apiV1); // Mount the entire v1 API
 
 describe('Quests Controller - POST /quests/:id/verify', () => {
   beforeEach(() => {
@@ -84,7 +85,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
     (mockedPool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ aptos_address: aptosAddress }], rowCount: 1 });
 
     const response = await request(app)
-      .post(`/quests/${questId}/verify`)
+      .post(`/api/v1/quests/${questId}/verify`)
       .send({ participantId });
 
     expect(response.status).toBe(200);
@@ -122,7 +123,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
       .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 });
 
     const response = await request(app)
-      .post(`/quests/${questId}/verify`)
+      .post(`/api/v1/quests/${questId}/verify`)
       .send({ participantId });
 
     expect(response.status).toBe(403);
@@ -156,7 +157,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
       .mockResolvedValueOnce({ rows: [{ status: 'verified' }], rowCount: 1 });
 
     const response = await request(app)
-      .post(`/quests/${questId}/verify`)
+      .post(`/api/v1/quests/${questId}/verify`)
       .send({ participantId });
 
     expect(response.status).toBe(400);
@@ -202,7 +203,7 @@ describe('Quests Controller - POST /quests/:id/verify', () => {
     (mockedPool.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const response = await request(app)
-      .post(`/quests/${questId}/verify`)
+      .post(`/api/v1/quests/${questId}/verify`)
       .send({ participantId });
 
     expect(response.status).toBe(200);
@@ -265,7 +266,7 @@ describe('Quests Controller - POST /quests', () => {
     (pool.query as jest.Mock).mockResolvedValue({ rows: [mockDbResponse] });
 
     const response = await request(app)
-      .post('/quests')
+      .post('/api/v1/quests')
       .send(newQuestData);
 
     expect(response.status).toBe(201);
@@ -305,11 +306,81 @@ describe('Quests Controller - POST /quests', () => {
     };
 
     const response = await request(app)
-      .post('/quests')
+      .post('/api/v1/quests')
       .send(invalidQuestData);
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe('"reward" is required');
+  });
+
+  describe('POST /quests/:id/join', () => {
+    const mockQuestId = '101';
+    const mockCreatorId = '1';
+    const mockParticipantId = '2';
+
+    it('should allow an authenticated user to join a quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockParticipantId };
+        next();
+      });
+
+      (pool.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: [{ creator_id: mockCreatorId }] }) // Quest lookup
+        .mockResolvedValueOnce({ rows: [] }); // Insert participant
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toBe('Successfully joined quest');
+      expect(pool.query).toHaveBeenCalledWith('INSERT INTO quest_participants (quest_id, user_id) VALUES ($1, $2)', [mockQuestId, mockParticipantId]);
+    });
+
+    it('should return 401 if user is not authenticated', async () => {
+      // Using default unauthenticated mock
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 404 if quest does not exist', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockParticipantId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValue({ rows: [] }); // Quest not found
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Quest not found.');
+    });
+
+    it('should return 400 if the creator tries to join their own quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockCreatorId }; // User is the creator
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValue({ rows: [{ creator_id: mockCreatorId }] });
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('You cannot join your own quest.');
+    });
+
+    it('should return 409 if the user has already joined the quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockParticipantId };
+        next();
+      });
+
+      (pool.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: [{ creator_id: mockCreatorId }] })
+        .mockRejectedValueOnce({ code: '23505' }); // Simulate unique constraint violation
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
+      expect(response.status).toBe(409);
+      expect(response.body.message).toBe('You have already joined this quest.');
+    });
   });
 
   it('should return 401 if user is not authenticated', async () => {
@@ -323,7 +394,7 @@ describe('Quests Controller - POST /quests', () => {
       type: 'social' as const,
       expires_at: new Date(Date.now() + 86400000).toISOString(),
     };
-    const response = await request(app).post('/quests').send(validQuestData);
+    const response = await request(app).post('/api/v1/quests').send(validQuestData);
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe('Not authorized to create a quest.');

@@ -297,3 +297,52 @@
 {"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:01:55.813Z"}
 {"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:01:55.814Z"}
 {"level":"info","message":"User profile updated for user ID: 1","timestamp":"2025-07-15T17:01:55.939Z"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:30:49.922Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:30:49.924Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:30:49.924Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:30:49.945Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:30:49.946Z"}
+{"created_at":"2025-07-15T17:30:49.947Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-07-16T17:30:49.947Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:30:49.951Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:31:57.534Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:31:57.537Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:31:57.537Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:31:57.558Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:31:57.558Z"}
+{"created_at":"2025-07-15T17:31:57.560Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-07-16T17:31:57.560Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:31:57.565Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:33:03.406Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:33:03.408Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:33:03.409Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:33:03.428Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:33:03.428Z"}
+{"created_at":"2025-07-15T17:33:03.430Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-07-16T17:33:03.430Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:33:03.434Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:34:09.099Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:34:09.100Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:34:09.101Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:34:09.117Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:34:09.117Z"}
+{"created_at":"2025-01-01T00:00:00.000Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-01-02T00:00:00.000Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:34:09.123Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:35:39.758Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:35:39.760Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:35:39.761Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:35:39.781Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:35:39.782Z"}
+{"created_at":"2025-01-01T00:00:00.000Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-01-02T00:00:00.000Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:35:39.788Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:39:31.979Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:39:31.981Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:39:31.981Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:39:31.996Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:39:31.996Z"}
+{"created_at":"2025-01-01T00:00:00.000Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-01-02T00:00:00.000Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:39:32.001Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:40:04.459Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:40:04.461Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:40:04.461Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:40:04.476Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:40:04.476Z"}
+{"created_at":"2025-01-01T00:00:00.000Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-01-02T00:00:00.000Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:40:04.482Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 202 unlocked achievement 1: 'First Quest Completed'","timestamp":"2025-07-15T17:42:29.760Z"}
+{"level":"info","message":"Distributing 500000 reward to 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa for quest 101","timestamp":"2025-07-15T17:42:29.762Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:42:29.762Z"}
+{"level":"warn","message":"User 202 has no Aptos address linked. Skipping reward distribution for quest 101.","timestamp":"2025-07-15T17:42:29.778Z"}
+{"level":"info","message":"Quest 101 completion verified for user 202 by 1","timestamp":"2025-07-15T17:42:29.778Z"}
+{"created_at":"2025-01-01T00:00:00.000Z","creator_id":"1","currency":"Lunoa","description":"A quest for testing","expires_at":"2025-01-02T00:00:00.000Z","id":"101","level":"info","message":"New quest created:","reward":"100","status":"active","timestamp":"2025-07-15T17:42:29.783Z","title":"Test Quest","type":"social"}
+{"level":"info","message":"User 2 joined quest 101","timestamp":"2025-07-15T17:42:29.790Z"}

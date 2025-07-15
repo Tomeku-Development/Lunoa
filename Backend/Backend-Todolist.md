@@ -8,7 +8,7 @@
   - [x] Write comprehensive integration test for the `verifyQuestCompletion` endpoint.
   - [x] Add tests for the Aptos reward distribution flow.
   - [x] Write tests for `createQuest` endpoint.
-  - [ ] Write tests for `joinQuest` endpoint.
+  - [x] Write Jest tests for `joinQuest` endpoint.
   - [ ] Write tests for `completeQuest` endpoint.
   - [ ] Write tests for `updateQuest` and `deleteQuest` endpoints.
 - [x] **User Management**:

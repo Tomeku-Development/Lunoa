@@ -303,7 +303,8 @@ export const verifyQuestCompletion = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Quest not found.' });
     }
 
-    const { creator_id: questCreatorId, reward_amount: questReward } = questResult.rows[0];
+    const { creator_id: questCreatorId } = questResult.rows[0];
+    const rewardAmount = parseInt(questResult.rows[0].reward_amount, 10);
     if (questCreatorId !== verifierId) {
       await client.query('ROLLBACK');
       return res.status(403).json({ message: 'Forbidden: Only the quest creator can verify completion.' });
@@ -373,8 +374,8 @@ export const verifyQuestCompletion = async (req: Request, res: Response) => {
       const participantAddress = userResult.rows[0]?.aptos_address;
 
       if (participantAddress) {
-        logger.info(`Distributing ${questReward} reward to ${participantAddress} for quest ${questId}`);
-        await AptosService.distributeQuestRewards(participantAddress, questReward);
+        logger.info(`Distributing ${rewardAmount} reward to ${participantAddress} for quest ${questId}`);
+        await AptosService.distributeQuestRewards(participantAddress, rewardAmount);
       } else {
         logger.warn(`User ${participantId} has no Aptos address linked. Skipping reward distribution for quest ${questId}.`);
       }

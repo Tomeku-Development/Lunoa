@@ -55,6 +55,37 @@ router.post('/', protect, createQuest);
 
 /**
  * @swagger
+ * /api/v1/quests/{id}/join:
+ *   post:
+ *     summary: Join a quest
+ *     tags: [Quests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the quest to join.
+ *     responses:
+ *       200:
+ *         description: Successfully joined quest.
+ *       400:
+ *         description: Cannot join your own quest.
+ *       401:
+ *         description: Not authorized.
+ *       404:
+ *         description: Quest not found.
+ *       409:
+ *         description: Already joined this quest.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/:id/join', protect, joinQuest);
+
+/**
+ * @swagger
  * /api/v1/quests:
  *   get:
  *     summary: Get all quests with optional filtering

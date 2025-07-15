@@ -439,6 +439,148 @@ describe('Quests Controller - POST /quests', () => {
     });
   });
 
+  describe('PUT /quests/:id', () => {
+    const mockQuestId = '103';
+    const creatorId = '4';
+    const nonCreatorId = '5';
+    const updateData = { title: 'Updated Quest Title' };
+
+    it('should allow the creator to update a quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: creatorId };
+        next();
+      });
+
+      (pool.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 }) // Verification query
+        .mockResolvedValueOnce({ rows: [{ ...updateData }], rowCount: 1 }); // Update query
+
+      const response = await request(app)
+        .put(`/api/v1/quests/${mockQuestId}`)
+        .send(updateData);
+
+      expect(response.status).toBe(200);
+      expect(response.body.title).toBe(updateData.title);
+    });
+
+    it('should return 403 if a non-creator tries to update the quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: nonCreatorId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 });
+
+      const response = await request(app)
+        .put(`/api/v1/quests/${mockQuestId}`)
+        .send(updateData);
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Forbidden: You can only update your own quests.');
+    });
+
+    it('should return 401 if user is not authenticated', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        res.status(401).json({ message: 'Not authorized.' });
+      });
+
+      const response = await request(app)
+        .put(`/api/v1/quests/${mockQuestId}`)
+        .send(updateData);
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toBe('Not authorized.');
+    });
+
+    it('should return 404 if the quest does not exist', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: creatorId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const response = await request(app)
+        .put(`/api/v1/quests/${mockQuestId}`)
+        .send(updateData);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Quest not found.');
+    });
+
+    it('should return 400 if no update data is provided', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: creatorId };
+        next();
+      });
+
+      const response = await request(app)
+        .put(`/api/v1/quests/${mockQuestId}`)
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('No update data provided.');
+    });
+  });
+
+  describe('DELETE /quests/:id', () => {
+    const mockQuestId = '104';
+    const creatorId = '6';
+    const nonCreatorId = '7';
+
+    it('should allow the creator to delete a quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: creatorId };
+        next();
+      });
+
+      (pool.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 }) // Verification query
+        .mockResolvedValueOnce({ rowCount: 1 }); // Deletion query
+
+      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
+
+      expect(response.status).toBe(204);
+    });
+
+    it('should return 403 if a non-creator tries to delete the quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: nonCreatorId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 });
+
+      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toBe('Forbidden: You can only delete your own quests.');
+    });
+
+    it('should return 401 if user is not authenticated', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        res.status(401).json({ message: 'Not authorized.' });
+      });
+      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 404 if the quest does not exist', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: creatorId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Quest not found.');
+    });
+  });
+
   it('should return 401 if user is not authenticated', async () => {
     // Using the default unauthenticated mock for protect middleware.
     // We send a valid body to ensure the request passes validation and is stopped by the auth middleware.

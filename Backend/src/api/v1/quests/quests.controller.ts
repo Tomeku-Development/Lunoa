@@ -158,8 +158,7 @@ export const deleteQuest = async (req: Request, res: Response) => {
     // First, verify the quest exists and the user is the owner.
     const verifyResult = await pool.query('SELECT creator_id FROM quests WHERE id = $1', [id]);
     if (verifyResult.rows.length === 0) {
-      // If the quest doesn't exist, it's already gone. Idempotent success.
-      return res.status(204).send();
+      return res.status(404).json({ message: 'Quest not found.' });
     }
 
     if (verifyResult.rows[0].creator_id !== authenticatedUserId) {

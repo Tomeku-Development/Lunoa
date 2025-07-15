@@ -1,5 +1,22 @@
 # Changelog - 2025-07-16
 
+## Aptos Smart Contract: Core Quest Logic
+
+This update marks a major milestone with the successful development and testing of the foundational `LunoaQuests` smart contract on the Aptos blockchain. The contract now supports the complete, basic lifecycle of a quest.
+
+-   **Contract Implementation (`quests.move`)**: 
+    -   Developed the core Move module with `Quest` and `QuestStore` structs to manage all on-chain quest data.
+    -   Implemented three key entry functions: `create_quest`, `join_quest`, and `complete_quest`.
+    -   Set up event handles for `QuestCreated`, `QuestJoined`, and `QuestCompleted` to enable off-chain services to listen to contract activity.
+
+-   **Comprehensive Unit Testing (`quests_tests.move`)**:
+    -   Built a robust test suite covering the entire quest lifecycle: creation, joining, and completion.
+    -   Resolved multiple complex Move testing errors, including resource initialization, private function access, and correct test account setup.
+    -   Implemented a test-only `view` function to allow tests to assert against the contract's internal state, ensuring logic correctness.
+
+-   **Build & Configuration**:
+    -   Configured the `Move.toml` manifest with the necessary dependencies and named addresses for successful compilation and testing.
+
 This update focuses on stabilizing the backend testing suite, fixing critical bugs in the quest and user controllers, and improving the reliability of the Aptos blockchain integration.
 
 ## Features & Fixes

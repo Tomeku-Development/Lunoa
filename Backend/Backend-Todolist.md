@@ -3,14 +3,14 @@
 ## Next Priorities (As of July 2025)
 - [x] **Blockchain Integration for Quests**:
   - [x] Integrate Aptos SDK for reward distribution in the `verifyQuestCompletion` function.
-  - [ ] Begin development of the core `Quest Contract` on Aptos to handle on-chain logic.
+  - [x] Begin development of the core `Quest Contract` on Aptos to handle on-chain logic.
 - [ ] **Testing**:
   - [x] Write comprehensive integration test for the `verifyQuestCompletion` endpoint.
   - [x] Add tests for the Aptos reward distribution flow.
   - [x] Write tests for `createQuest` endpoint.
   - [x] Write Jest tests for `joinQuest` endpoint.
   - [x] Write tests for `completeQuest` endpoint.
-  - [ ] Write tests for `updateQuest` and `deleteQuest` endpoints.
+  - [x] Write tests for `updateQuest` and `deleteQuest` endpoints.
 - [x] **User Management**:
   - [x] Implement the core User Management API service endpoints (Profile Get/Update, Follow/Unfollow).
   - [x] Expand the `users` table schema to include profile details and Aptos wallet address.
@@ -30,11 +30,11 @@
 ## Smart Contract Development
 
 ### 1. Core Smart Contracts (Move/Aptos)
-- [ ] **Quest Contract**:
-  - [ ] Quest creation and management
-  - [ ] Quest verification logic
+- [x] **Quest Contract**:
+  - [x] Quest creation and management
+  - [x] Quest verification logic
   - [ ] Reward distribution mechanism
-  - [ ] Quest completion validation
+  - [x] Quest completion validation
   - [ ] Quest cancellation/refund logic
 - [ ] **Vibe NFT Contract**:
   - [ ] NFT minting functionality
@@ -63,7 +63,7 @@
 
 ### 2. Contract Deployment & Testing
 - [ ] Deploy contracts to Aptos testnet
-- [ ] Write comprehensive unit tests
+- [x] Write comprehensive unit tests
 - [ ] Integration testing
 - [ ] Gas optimization
 - [ ] Security auditing

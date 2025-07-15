@@ -9,7 +9,7 @@
   - [x] Add tests for the Aptos reward distribution flow.
   - [x] Write tests for `createQuest` endpoint.
   - [x] Write Jest tests for `joinQuest` endpoint.
-  - [ ] Write tests for `completeQuest` endpoint.
+  - [x] Write tests for `completeQuest` endpoint.
   - [ ] Write tests for `updateQuest` and `deleteQuest` endpoints.
 - [x] **User Management**:
   - [x] Implement the core User Management API service endpoints (Profile Get/Update, Follow/Unfollow).

@@ -220,60 +220,40 @@ export const joinQuest = async (req: Request, res: Response) => {
  * Complete a quest and claim rewards.
  */
 export const completeQuest = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const authenticatedUserId = req.user?.userId;
+  const { id: questId } = req.params;
+  const userId = req.user?.userId;
 
-  const { proofOfCompletion } = req.body;
-
-  if (!authenticatedUserId) {
+  if (!userId) {
     return res.status(401).json({ message: 'Not authorized.' });
   }
 
-  if (!proofOfCompletion || typeof proofOfCompletion !== 'string') {
-    return res.status(400).json({ message: 'Proof of completion is required.' });
-  }
-
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    const participantResult = await client.query(
+    const participantResult = await pool.query(
       'SELECT status FROM quest_participants WHERE quest_id = $1 AND user_id = $2',
-      [id, authenticatedUserId]
+      [questId, userId]
     );
 
     if (participantResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ message: 'You have not joined this quest.' });
+      return res.status(404).json({ message: 'Participant not found for this quest.' });
     }
 
-    const participantStatus = participantResult.rows[0].status;
-    if (participantStatus !== 'joined') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ message: `Cannot submit completion for a quest with status: ${participantStatus}` });
+    const { status } = participantResult.rows[0];
+
+    if (status === 'submitted' || status === 'verified') {
+      return res.status(409).json({ message: 'Quest completion has already been submitted.' });
     }
 
-    await client.query(
-      "UPDATE quest_participants SET status = 'submitted', proof_of_completion = $1 WHERE quest_id = $2 AND user_id = $3",
-      [proofOfCompletion, id, authenticatedUserId]
+    await pool.query(
+      'UPDATE quest_participants SET status = $1, updated_at = NOW() WHERE quest_id = $2 AND user_id = $3',
+      ['submitted', questId, userId]
     );
 
-    const activityMetadata = { questId: id, proof: proofOfCompletion };
-    await client.query(
-      "INSERT INTO user_activities (user_id, activity_type, metadata) VALUES ($1, 'quest_submitted', $2)",
-      [authenticatedUserId, activityMetadata]
-    );
-
-    await client.query('COMMIT');
-    logger.info(`User ${authenticatedUserId} submitted completion for quest ${id}`);
-    res.status(200).json({ message: 'Quest completion submitted for verification.' });
+    logger.info(`User ${userId} marked quest ${questId} as completed.`);
+    res.status(200).json({ message: 'Quest marked as completed. Awaiting verification.' });
 
   } catch (dbError) {
-    await client.query('ROLLBACK');
-    logger.error(`Error completing quest ${id} for user ${authenticatedUserId}:`, dbError);
-    res.status(500).json({ message: 'Failed to submit quest completion.' });
-  } finally {
-    client.release();
+    logger.error(`Error completing quest ${questId} for user ${userId}:`, dbError);
+    res.status(500).json({ message: 'Failed to complete quest.' });
   }
 };
 

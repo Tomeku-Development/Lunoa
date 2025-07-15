@@ -383,6 +383,62 @@ describe('Quests Controller - POST /quests', () => {
     });
   });
 
+  describe('POST /quests/:id/complete', () => {
+    const mockQuestId = '102';
+    const mockParticipantId = '3';
+
+    it('should allow a participant to mark a quest as complete', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockParticipantId };
+        next();
+      });
+
+      (pool.query as jest.Mock)
+        .mockResolvedValueOnce({ rows: [{ status: 'active' }] }) // Participant lookup
+        .mockResolvedValueOnce({ rowCount: 1 }); // Update status
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
+
+      expect(response.status).toBe(200);
+      expect(response.body.message).toBe('Quest marked as completed. Awaiting verification.');
+      expect(pool.query).toHaveBeenCalledWith(
+        'UPDATE quest_participants SET status = $1, updated_at = NOW() WHERE quest_id = $2 AND user_id = $3',
+        ['submitted', mockQuestId, mockParticipantId]
+      );
+    });
+
+    it('should return 401 if user is not authenticated', async () => {
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 404 if the user has not joined the quest', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockParticipantId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValue({ rows: [] }); // Participant not found
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Participant not found for this quest.');
+    });
+
+    it('should return 409 if the quest has already been submitted', async () => {
+      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+        req.user = { userId: mockParticipantId };
+        next();
+      });
+
+      (pool.query as jest.Mock).mockResolvedValue({ rows: [{ status: 'submitted' }] }); // Already submitted
+
+      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
+      expect(response.status).toBe(409);
+      expect(response.body.message).toBe('Quest completion has already been submitted.');
+    });
+  });
+
   it('should return 401 if user is not authenticated', async () => {
     // Using the default unauthenticated mock for protect middleware.
     // We send a valid body to ensure the request passes validation and is stopped by the auth middleware.

@@ -86,6 +86,37 @@ router.post('/:id/join', protect, joinQuest);
 
 /**
  * @swagger
+ * /api/v1/quests/{id}/complete:
+ *   post:
+ *     summary: Mark a quest as completed by the participant
+ *     tags: [Quests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the quest to complete.
+ *     responses:
+ *       200:
+ *         description: Quest marked as completed, awaiting verification.
+ *       400:
+ *         description: Bad request (e.g., user has not joined the quest).
+ *       401:
+ *         description: Not authorized.
+ *       404:
+ *         description: Quest not found.
+ *       409:
+ *         description: Quest already submitted for completion.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/:id/complete', protect, completeQuest);
+
+/**
+ * @swagger
  * /api/v1/quests:
  *   get:
  *     summary: Get all quests with optional filtering

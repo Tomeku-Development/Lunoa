@@ -1,5 +1,10 @@
 # Changelog - 2025-07-16
 
+## Backend
+
+### Fixed
+- **Quests Controller Tests**: Resolved critical issues causing Jest tests to hang and fail. The entire test suite was refactored to improve stability, isolate tests, and standardize mocking for the database connection and authentication middleware. This ensures reliable and consistent test runs.
+
 ## Aptos Smart Contract: Vibe NFT
 
 This update delivers a fully functional and tested `vibe_nft.move` smart contract, enabling the creation and minting of Vibe NFTs on the Aptos blockchain. The process involved intensive debugging and verification to ensure correctness and align with the Aptos Object model.

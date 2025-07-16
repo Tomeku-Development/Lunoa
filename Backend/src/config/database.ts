@@ -4,17 +4,30 @@ import logger from './logger';
 
 dotenv.config();
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+let pool: Pool;
 
-pool.on('connect', () => {
-  logger.info('Connected to the database');
-});
+export const getPool = (): Pool => {
+  if (pool) {
+    return pool;
+  }
 
-pool.on('error', (err) => {
-  logger.error('Database connection error', err);
-  process.exit(-1);
-});
+  if (process.env.NODE_ENV === 'test' && (global as any).__DB_POOL__) {
+    pool = (global as any).__DB_POOL__;
+    return pool;
+  }
 
-export default pool;
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+  pool.on('connect', () => {
+    logger.info('Connected to the database');
+  });
+
+  pool.on('error', (err) => {
+    logger.error('Database connection error', err);
+    process.exit(-1);
+  });
+
+  return pool;
+};

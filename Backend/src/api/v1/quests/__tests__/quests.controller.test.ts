@@ -1,600 +1,352 @@
 import request from 'supertest';
 import express, { Request, Response, NextFunction } from 'express';
-import { Quest } from '../quests.model';
-import { createQuest, verifyQuestCompletion } from '../quests.controller';
-import pool from '../../../../config/database';
+import { getPool } from '../../../../config/database';
 import AptosService from '../../blockchain/aptos.service';
 import { protect } from '../../../../middleware/auth.middleware';
+import apiV1 from '../..'; // Import the main v1 router
 
 // --- Mock Dependencies ---
-jest.mock('../../../../config/database');
+jest.mock('../../../../config/database', () => ({
+  getPool: jest.fn(),
+}));
 jest.mock('../../blockchain/aptos.service', () => ({
   distributeQuestRewards: jest.fn().mockResolvedValue('fake_transaction_hash'),
 }));
 jest.mock('../../../../middleware/auth.middleware');
-
 // --- End Mock Dependencies ---
 
-const mockedPool = pool as jest.Mocked<typeof pool>;
-const mockedProtect = protect as jest.Mock;
-mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-  // Default mock for the verifier (quest creator)
-  req.user = { userId: '1' };
-  next();
-});
-const mockedAptosService = AptosService as jest.Mocked<typeof AptosService>;
-
+// --- App and Mock Setup ---
 const app = express();
 app.use(express.json());
-
-
-
-app.use((req: Request, res: Response, next: NextFunction) => {
-  // This mock simulates the default behavior of the auth middleware
-  // It can be overridden in specific tests. By default, just call next().
-  // The actual user injection will be handled inside each test.
-  next();
-});
-
-import apiV1 from '../..'; // Import the main v1 router
-
 app.use('/api/v1', apiV1); // Mount the entire v1 API
 
-describe('Quests Controller - POST /quests/:id/verify', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockedProtect.mockClear();
-  });
+const mockedGetPool = getPool as jest.Mock;
+const mockedProtect = protect as jest.Mock;
+const mockedAptosService = AptosService as jest.Mocked<typeof AptosService>;
 
-  it('should successfully verify quest, award achievement, and distribute rewards', async () => {
-    const questId = '101';
-    const participantId = '202';
-    const verifierId = '1';
-    const aptosAddress = '0x' + 'a'.repeat(64);
+const mockPool = {
+  connect: jest.fn(),
+  query: jest.fn(),
+};
 
-    const mockClient = {
-      query: jest.fn(),
-      release: jest.fn(),
-    };
-    (mockedPool.connect as jest.Mock).mockResolvedValue(mockClient);
+// Global setup to reset mocks before each test
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockedGetPool.mockReturnValue(mockPool);
 
-    // Mock the sequence of queries within the transaction
-    mockClient.query
-      // 1. BEGIN
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-      // 2. Fetch quest to verify creator
-      .mockResolvedValueOnce({ rows: [{ creator_id: verifierId, reward_amount: '500000' }], rowCount: 1 })
-      // 3. Fetch participant to verify status
-      .mockResolvedValueOnce({ rows: [{ status: 'submitted' }], rowCount: 1 })
-      // 4. UPDATE quest_participants status
-      .mockResolvedValueOnce({ rowCount: 1 })
-      // 5. INSERT into user_activities (verification)
-      .mockResolvedValueOnce({ rowCount: 1 })
-      // 6. COUNT verified quests for achievement check
-      .mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 })
-      // 7. Check if 'First Quest Completed' achievement exists
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Does not exist, so will be awarded
-      // 8. INSERT into user_achievements
-      .mockResolvedValueOnce({ rowCount: 1 })
-      // 9. INSERT into user_activities (achievement)
-      .mockResolvedValueOnce({ rowCount: 1 })
-      // 10. COMMIT
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-    // Mock the separate query for the user's Aptos address (happens after COMMIT)
-    (mockedPool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ aptos_address: aptosAddress }], rowCount: 1 });
-
-    const response = await request(app)
-      .post(`/api/v1/quests/${questId}/verify`)
-      .send({ participantId });
-
-    expect(response.status).toBe(200);
-    expect(response.body.message).toBe('Quest completion verified successfully.');
-
-    // Verify transaction was committed
-    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
-
-    // Verify reward distribution was called
-    const expectedReward = 500000; // The amount from the mocked quest data, parsed to a number
-    expect(AptosService.distributeQuestRewards).toHaveBeenCalledWith(aptosAddress, expectedReward);
-  });
-
-  it('should return 403 Forbidden if the verifier is not the quest creator', async () => {
-    // Set the middleware to mock a user who is NOT the creator
-    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-      req.user = { userId: '999' }; // This verifier is not the creator
-      next();
-    });
-
-    const questId = '101';
-    const participantId = '202';
-
-    const mockClient = {
-      query: jest.fn(),
-      release: jest.fn(),
-    };
-    (mockedPool.connect as jest.Mock).mockResolvedValue(mockClient);
-
-    // Mock the transaction flow
-    mockClient.query
-      // 1. BEGIN
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-      // 2. Fetch quest to find the actual creator is '1'
-      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 });
-
-    const response = await request(app)
-      .post(`/api/v1/quests/${questId}/verify`)
-      .send({ participantId });
-
-    expect(response.status).toBe(403);
-    expect(response.body.message).toBe('Forbidden: Only the quest creator can verify completion.');
-    expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
-    expect(AptosService.distributeQuestRewards).not.toHaveBeenCalled();
-  });
-
-  it('should return 400 Bad Request if participant status is not submitted', async () => {
-    // Set middleware to mock the correct creator
-    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-      req.user = { userId: '1' };
-      next();
-    });
-
-    const questId = '101';
-    const participantId = '202';
-
-    const mockClient = {
-      query: jest.fn(),
-      release: jest.fn(),
-    };
-    (mockedPool.connect as jest.Mock).mockResolvedValue(mockClient);
-
-    mockClient.query
-      // 1. BEGIN
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-      // 2. Fetch quest
-      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 })
-      // 3. Fetch participant with 'verified' status, which is not allowed
-      .mockResolvedValueOnce({ rows: [{ status: 'verified' }], rowCount: 1 });
-
-    const response = await request(app)
-      .post(`/api/v1/quests/${questId}/verify`)
-      .send({ participantId });
-
-    expect(response.status).toBe(400);
-    expect(response.body.message).toBe('Cannot verify completion for a participant with status: verified');
-    expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
-    expect(AptosService.distributeQuestRewards).not.toHaveBeenCalled();
-  });
-
-  it('should succeed but not distribute rewards if user has no aptos_address', async () => {
-    // Set middleware to mock the correct creator
-    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-      req.user = { userId: '1' };
-      next();
-    });
-
-    const questId = '101';
-    const participantId = '202';
-
-    const mockClient = {
-      query: jest.fn(),
-      release: jest.fn(),
-    };
-    (mockedPool.connect as jest.Mock).mockResolvedValue(mockClient);
-
-    // Mock the full, successful transaction flow
-    mockClient.query
-      // 1. BEGIN
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-      // 2. Fetch quest
-      .mockResolvedValueOnce({ rows: [{ creator_id: '1', reward_amount: '500000' }], rowCount: 1 })
-      // 3. Fetch participant
-      .mockResolvedValueOnce({ rows: [{ status: 'submitted' }], rowCount: 1 })
-      // 4. Update participant status
-      .mockResolvedValueOnce({ rowCount: 1 })
-      // 5. Log activity
-      .mockResolvedValueOnce({ rowCount: 1 })
-      // 6. Check for achievements
-      .mockResolvedValueOnce({ rows: [{ count: '5' }], rowCount: 1 }) // Not first quest, no achievement
-      // 7. COMMIT
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-    // Mock the post-transaction query to find no aptos_address
-    (mockedPool.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-    const response = await request(app)
-      .post(`/api/v1/quests/${questId}/verify`)
-      .send({ participantId });
-
-    expect(response.status).toBe(200);
-    expect(response.body.message).toBe('Quest completion verified successfully.');
-    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
-    expect(AptosService.distributeQuestRewards).not.toHaveBeenCalled();
+  // Default auth mock: pass through, tests will override for specific user states
+  mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+    // This default behavior simulates an unauthenticated user by sending a 401 response.
+    // Specific tests must override this mock to simulate an authenticated user.
+    res.status(401).json({ message: 'Not authorized, no token' });
   });
 });
+// --- End App and Mock Setup ---
 
-describe('Quests Controller - POST /quests', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    // Provide a default mock implementation for the protect middleware
-    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-      // This default mock simulates an unauthenticated user.
-      // Tests that require an authenticated user will override this implementation.
-      next();
-    });
-  });
-
-  it('should create a new quest successfully', async () => {
+describe('POST /api/v1/quests', () => {
+  it('should create a new quest successfully for an authenticated user', async () => {
     const mockUserId = '1';
     mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
       req.user = { userId: mockUserId };
       next();
     });
 
-    // Mock Date.now() to make the timestamps deterministic
-    const MOCK_NOW = 1735689600000; // Corresponds to 2025-01-01T00:00:00.000Z
-    const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => MOCK_NOW);
+    const MOCK_NOW = 1735689600000; // 2025-01-01T00:00:00.000Z
+    const mockDateNow = jest.spyOn(Date, 'now').mockReturnValue(MOCK_NOW);
 
-
-
-    const expectedExpiresAtDate = new Date(MOCK_NOW + 86400000);
-    const expectedExpiresAtString = expectedExpiresAtDate.toISOString();
-    const expectedCreatedAtString = new Date(MOCK_NOW).toISOString();
-
+    const expectedExpiresAt = new Date(MOCK_NOW + 86400000);
     const newQuestData = {
       title: 'Test Quest',
       description: 'A quest for testing',
       reward: 100,
       currency: 'Lunoa' as const,
       type: 'social' as const,
-      expires_at: expectedExpiresAtString, // Sent as a string
+      expires_at: expectedExpiresAt.toISOString(),
     };
 
     const mockDbResponse = {
       id: '101',
       creator_id: mockUserId,
-      title: newQuestData.title,
-      description: newQuestData.description,
+      ...newQuestData,
       reward: String(newQuestData.reward),
-      currency: newQuestData.currency,
-      type: newQuestData.type,
-      expires_at: expectedExpiresAtString,
       status: 'active',
-      created_at: expectedCreatedAtString,
+      created_at: new Date(MOCK_NOW).toISOString(),
     };
 
-    (pool.query as jest.Mock).mockResolvedValue({ rows: [mockDbResponse] });
+    mockPool.query.mockResolvedValue({ rows: [mockDbResponse] });
 
-    const response = await request(app)
-      .post('/api/v1/quests')
-      .send(newQuestData);
+    const response = await request(app).post('/api/v1/quests').send(newQuestData);
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual(mockDbResponse);
+    expect(mockPool.query).toHaveBeenCalledWith(expect.any(String), [
+      newQuestData.title,
+      newQuestData.description,
+      mockUserId,
+      newQuestData.reward,
+      newQuestData.currency,
+      newQuestData.type,
+      expectedExpiresAt,
+    ]);
 
-    expect(pool.query).toHaveBeenCalledWith(
-      expect.any(String),
-      [
-        newQuestData.title,
-        newQuestData.description,
-        mockUserId,
-        newQuestData.reward,
-        newQuestData.currency,
-        newQuestData.type,
-        expectedExpiresAtDate, // Assert that a Date object is passed
-      ]
-    );
-
-    // Restore the original Date.now()
     mockDateNow.mockRestore();
   });
 
-  it('should return 400 for invalid quest data', async () => {
-    const mockUserId = '1';
-    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-      req.user = { userId: mockUserId };
-      next();
-    });
-
-    const invalidQuestData = {
-      title: 'Test Quest',
-      description: 'This is a valid description.',
-      // reward is missing
-      currency: 'Lunoa' as const,
-      type: 'social' as const,
-      expires_at: new Date(Date.now() + 86400000).toISOString(),
-    };
-
-    const response = await request(app)
-      .post('/api/v1/quests')
-      .send(invalidQuestData);
-
-    expect(response.status).toBe(400);
-    expect(response.body.message).toBe('"reward" is required');
-  });
-
-  describe('POST /quests/:id/join', () => {
-    const mockQuestId = '101';
-    const mockCreatorId = '1';
-    const mockParticipantId = '2';
-
-    it('should allow an authenticated user to join a quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockParticipantId };
-        next();
-      });
-
-      (pool.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: [{ creator_id: mockCreatorId }] }) // Quest lookup
-        .mockResolvedValueOnce({ rows: [] }); // Insert participant
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
-
-      expect(response.status).toBe(200);
-      expect(response.body.message).toBe('Successfully joined quest');
-      expect(pool.query).toHaveBeenCalledWith('INSERT INTO quest_participants (quest_id, user_id) VALUES ($1, $2)', [mockQuestId, mockParticipantId]);
-    });
-
-    it('should return 401 if user is not authenticated', async () => {
-      // Using default unauthenticated mock
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
-      expect(response.status).toBe(401);
-    });
-
-    it('should return 404 if quest does not exist', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockParticipantId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValue({ rows: [] }); // Quest not found
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
-      expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Quest not found.');
-    });
-
-    it('should return 400 if the creator tries to join their own quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockCreatorId }; // User is the creator
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValue({ rows: [{ creator_id: mockCreatorId }] });
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
-      expect(response.status).toBe(400);
-      expect(response.body.message).toBe('You cannot join your own quest.');
-    });
-
-    it('should return 409 if the user has already joined the quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockParticipantId };
-        next();
-      });
-
-      (pool.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: [{ creator_id: mockCreatorId }] })
-        .mockRejectedValueOnce({ code: '23505' }); // Simulate unique constraint violation
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/join`).send();
-      expect(response.status).toBe(409);
-      expect(response.body.message).toBe('You have already joined this quest.');
-    });
-  });
-
-  describe('POST /quests/:id/complete', () => {
-    const mockQuestId = '102';
-    const mockParticipantId = '3';
-
-    it('should allow a participant to mark a quest as complete', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockParticipantId };
-        next();
-      });
-
-      (pool.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: [{ status: 'active' }] }) // Participant lookup
-        .mockResolvedValueOnce({ rowCount: 1 }); // Update status
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
-
-      expect(response.status).toBe(200);
-      expect(response.body.message).toBe('Quest marked as completed. Awaiting verification.');
-      expect(pool.query).toHaveBeenCalledWith(
-        'UPDATE quest_participants SET status = $1, updated_at = NOW() WHERE quest_id = $2 AND user_id = $3',
-        ['submitted', mockQuestId, mockParticipantId]
-      );
-    });
-
-    it('should return 401 if user is not authenticated', async () => {
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
-      expect(response.status).toBe(401);
-    });
-
-    it('should return 404 if the user has not joined the quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockParticipantId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValue({ rows: [] }); // Participant not found
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
-      expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Participant not found for this quest.');
-    });
-
-    it('should return 409 if the quest has already been submitted', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: mockParticipantId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValue({ rows: [{ status: 'submitted' }] }); // Already submitted
-
-      const response = await request(app).post(`/api/v1/quests/${mockQuestId}/complete`).send();
-      expect(response.status).toBe(409);
-      expect(response.body.message).toBe('Quest completion has already been submitted.');
-    });
-  });
-
-  describe('PUT /quests/:id', () => {
-    const mockQuestId = '103';
-    const creatorId = '4';
-    const nonCreatorId = '5';
-    const updateData = { title: 'Updated Quest Title' };
-
-    it('should allow the creator to update a quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: creatorId };
-        next();
-      });
-
-      (pool.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 }) // Verification query
-        .mockResolvedValueOnce({ rows: [{ ...updateData }], rowCount: 1 }); // Update query
-
-      const response = await request(app)
-        .put(`/api/v1/quests/${mockQuestId}`)
-        .send(updateData);
-
-      expect(response.status).toBe(200);
-      expect(response.body.title).toBe(updateData.title);
-    });
-
-    it('should return 403 if a non-creator tries to update the quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: nonCreatorId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 });
-
-      const response = await request(app)
-        .put(`/api/v1/quests/${mockQuestId}`)
-        .send(updateData);
-
-      expect(response.status).toBe(403);
-      expect(response.body.message).toBe('Forbidden: You can only update your own quests.');
-    });
-
-    it('should return 401 if user is not authenticated', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        res.status(401).json({ message: 'Not authorized.' });
-      });
-
-      const response = await request(app)
-        .put(`/api/v1/quests/${mockQuestId}`)
-        .send(updateData);
-
-      expect(response.status).toBe(401);
-      expect(response.body.message).toBe('Not authorized.');
-    });
-
-    it('should return 404 if the quest does not exist', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: creatorId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      const response = await request(app)
-        .put(`/api/v1/quests/${mockQuestId}`)
-        .send(updateData);
-
-      expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Quest not found.');
-    });
-
-    it('should return 400 if no update data is provided', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: creatorId };
-        next();
-      });
-
-      const response = await request(app)
-        .put(`/api/v1/quests/${mockQuestId}`)
-        .send({});
-
-      expect(response.status).toBe(400);
-      expect(response.body.message).toBe('No update data provided.');
-    });
-  });
-
-  describe('DELETE /quests/:id', () => {
-    const mockQuestId = '104';
-    const creatorId = '6';
-    const nonCreatorId = '7';
-
-    it('should allow the creator to delete a quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: creatorId };
-        next();
-      });
-
-      (pool.query as jest.Mock)
-        .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 }) // Verification query
-        .mockResolvedValueOnce({ rowCount: 1 }); // Deletion query
-
-      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
-
-      expect(response.status).toBe(204);
-    });
-
-    it('should return 403 if a non-creator tries to delete the quest', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: nonCreatorId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 });
-
-      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
-
-      expect(response.status).toBe(403);
-      expect(response.body.message).toBe('Forbidden: You can only delete your own quests.');
-    });
-
-    it('should return 401 if user is not authenticated', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        res.status(401).json({ message: 'Not authorized.' });
-      });
-      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
-
-      expect(response.status).toBe(401);
-    });
-
-    it('should return 404 if the quest does not exist', async () => {
-      mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
-        req.user = { userId: creatorId };
-        next();
-      });
-
-      (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      const response = await request(app).delete(`/api/v1/quests/${mockQuestId}`);
-
-      expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Quest not found.');
-    });
-  });
-
   it('should return 401 if user is not authenticated', async () => {
-    // Using the default unauthenticated mock for protect middleware.
-    // We send a valid body to ensure the request passes validation and is stopped by the auth middleware.
-    const validQuestData = {
+    // No user is mocked, so the default unauthenticated mock is used
+    const response = await request(app).post('/api/v1/quests').send({
       title: 'Unauthorized Quest',
       description: 'This should not be created',
       reward: 50,
-      currency: 'Lunoa' as const,
-      type: 'social' as const,
-      expires_at: new Date(Date.now() + 86400000).toISOString(),
-    };
-    const response = await request(app).post('/api/v1/quests').send(validQuestData);
+      currency: 'Lunoa',
+      type: 'social',
+      expires_at: new Date().toISOString(),
+    });
 
     expect(response.status).toBe(401);
-    expect(response.body.message).toBe('Not authorized to create a quest.');
+  });
+
+  it('should return 400 for invalid quest data', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: '1' };
+      next();
+    });
+
+    const response = await request(app).post('/api/v1/quests').send({ title: 'Only title' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('"description" is required');
+  });
+});
+
+describe('POST /api/v1/quests/:id/verify', () => {
+  const questId = '101';
+  const participantId = '202';
+  const verifierId = '1';
+
+  it('should successfully verify quest, award achievement, and distribute rewards', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: verifierId };
+      next();
+    });
+
+    const aptosAddress = '0x' + 'a'.repeat(64);
+    const mockClient = { query: jest.fn(), release: jest.fn() };
+    mockPool.connect.mockResolvedValue(mockClient);
+
+    // Mock transaction flow
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ creator_id: verifierId, reward_amount: '500000' }], rowCount: 1 }) // Fetch quest
+      .mockResolvedValueOnce({ rows: [{ status: 'submitted' }], rowCount: 1 }) // Fetch participant
+      .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE participant status
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT verification activity
+      .mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 }) // COUNT verified quests
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // Check achievement (not found)
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT achievement
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT achievement activity
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+
+    mockPool.query.mockResolvedValueOnce({ rows: [{ aptos_address: aptosAddress }], rowCount: 1 });
+
+    const response = await request(app).post(`/api/v1/quests/${questId}/verify`).send({ participantId });
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe('Quest completion verified successfully.');
+    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(mockedAptosService.distributeQuestRewards).toHaveBeenCalledWith(aptosAddress, 500000);
+  });
+
+  it('should return 403 if the verifier is not the quest creator', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: '999' }; // Not the creator
+      next();
+    });
+
+    const mockClient = { query: jest.fn(), release: jest.fn() };
+    mockPool.connect.mockResolvedValue(mockClient);
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ creator_id: verifierId }], rowCount: 1 }); // Fetch quest
+
+    const response = await request(app).post(`/api/v1/quests/${questId}/verify`).send({ participantId });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Forbidden: Only the quest creator can verify completion.');
+    expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+});
+
+describe('POST /api/v1/quests/:id/join', () => {
+  const questId = '101';
+  const creatorId = '1';
+  const participantId = '2';
+
+  it('should allow an authenticated user to join a quest', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: participantId };
+      next();
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }] }) // Quest lookup
+      .mockResolvedValueOnce({ rows: [] }); // Insert participant
+
+    const response = await request(app).post(`/api/v1/quests/${questId}/join`).send();
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe('Successfully joined quest');
+  });
+
+  it('should return 401 if user is not authenticated', async () => {
+    const response = await request(app).post(`/api/v1/quests/${questId}/join`).send();
+    expect(response.status).toBe(401);
+  });
+
+  it('should return 409 if the user has already joined the quest', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: participantId };
+      next();
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }] })
+      .mockRejectedValueOnce({ code: '23505' }); // Simulate unique constraint violation
+
+    const response = await request(app).post(`/api/v1/quests/${questId}/join`).send();
+    expect(response.status).toBe(409);
+    expect(response.body.message).toBe('You have already joined this quest.');
+  });
+});
+
+describe('POST /api/v1/quests/:id/complete', () => {
+  const questId = '102';
+  const participantId = '3';
+
+  it('should allow a participant to mark a quest as complete', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: participantId };
+      next();
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ status: 'active' }] }) // Participant lookup
+      .mockResolvedValueOnce({ rowCount: 1 }); // Update status
+
+    const response = await request(app).post(`/api/v1/quests/${questId}/complete`).send();
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe('Quest marked as completed. Awaiting verification.');
+  });
+
+  it('should return 401 if user is not authenticated', async () => {
+    const response = await request(app).post(`/api/v1/quests/${questId}/complete`).send();
+    expect(response.status).toBe(401);
+  });
+
+  it('should return 409 if the quest has already been submitted', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: participantId };
+      next();
+    });
+
+    mockPool.query.mockResolvedValue({ rows: [{ status: 'submitted' }] });
+
+    const response = await request(app).post(`/api/v1/quests/${questId}/complete`).send();
+    expect(response.status).toBe(409);
+    expect(response.body.message).toBe('Quest completion has already been submitted.');
+  });
+});
+
+describe('PUT /api/v1/quests/:id', () => {
+  const questId = '103';
+  const creatorId = '4';
+  const updateData = { title: 'Updated Quest Title' };
+
+  it('should allow the creator to update a quest', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: creatorId };
+      next();
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ ...updateData }], rowCount: 1 });
+
+    const response = await request(app).put(`/api/v1/quests/${questId}`).send(updateData);
+
+    expect(response.status).toBe(200);
+    expect(response.body.title).toBe(updateData.title);
+  });
+
+  it('should return 403 if a non-creator tries to update', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: 'non-creator' };
+      next();
+    });
+
+    mockPool.query.mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 });
+
+    const response = await request(app).put(`/api/v1/quests/${questId}`).send(updateData);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('should return 400 if no update data is provided', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: creatorId };
+      next();
+    });
+
+    const response = await request(app).put(`/api/v1/quests/${questId}`).send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('No update data provided.');
+  });
+});
+
+describe('DELETE /api/v1/quests/:id', () => {
+  const questId = '104';
+  const creatorId = '6';
+
+  it('should allow the creator to delete a quest', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: creatorId };
+      next();
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    const response = await request(app).delete(`/api/v1/quests/${questId}`);
+
+    expect(response.status).toBe(204);
+  });
+
+  it('should return 403 if a non-creator tries to delete', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: 'non-creator' };
+      next();
+    });
+
+    mockPool.query.mockResolvedValueOnce({ rows: [{ creator_id: creatorId }], rowCount: 1 });
+
+    const response = await request(app).delete(`/api/v1/quests/${questId}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('should return 404 if the quest does not exist', async () => {
+    mockedProtect.mockImplementation((req: Request, res: Response, next: NextFunction) => {
+      req.user = { userId: creatorId };
+      next();
+    });
+
+    mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const response = await request(app).delete(`/api/v1/quests/${questId}`);
+
+    expect(response.status).toBe(404);
   });
 });

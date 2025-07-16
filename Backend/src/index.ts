@@ -1,58 +1,20 @@
-import express, { Express, Request, Response } from 'express';
-import dotenv from 'dotenv';
-import cors from 'cors';
-import cookieParser from 'cookie-parser';
+import { app } from './app';
 import logger from './config/logger';
-import swaggerUi from 'swagger-ui-express';
-import swaggerSpec from './config/swagger';
-import pool from './config/database';
-import apiV1 from './api/v1';
-
-dotenv.config();
-
-const app: Express = express();
-
-// Test DB connection on startup
-(async () => {
-  try {
-    const client = await pool.connect();
-    logger.info('Database connection test successful.');
-    client.release(); // Release the client back to the pool
-  } catch (err) {
-    logger.error('Failed to connect to the database.', err);
-    process.exit(1); // Exit the process with an error code
-  }
-})();
-
-
-
-
-
-app.use(cors());
-app.use(express.json());
-app.use(cookieParser());
-
-// Swagger UI
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-// API Routes
-app.use('/api/v1', apiV1);
+import { getPool } from './config/database';
 
 const port = process.env.PORT || 3000;
 
-/**
- * @swagger
- * /:
- *   get:
- *     summary: Returns a welcome message.
- *     responses:
- *       200:
- *         description: A simple welcome message.
- */
-app.get('/', (req: Request, res: Response) => {
-  res.send('Lunoa Backend is running!');
+const server = app.listen(port, async () => {
+  try {
+    // Test DB connection on startup
+        const client = await getPool().connect();
+    logger.info('Database connection test successful.');
+    client.release();
+    logger.info(`Server is running at http://localhost:${port}`);
+  } catch (err) {
+    logger.error('Failed to connect to the database on startup.', err);
+    process.exit(1);
+  }
 });
 
-app.listen(port, () => {
-  logger.info(`Server is running at http://localhost:${port}`);
-});
+export { server };

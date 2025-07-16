@@ -276,13 +276,13 @@ module aptos_framework::primary_fungible_store {
         fungible_asset::withdraw_with_ref(transfer_ref, from_primary_store, amount)
     }
 
-    /// Deposit from the primary store of `owner` ignoring frozen flag.
+    /// Deposit to the primary store of `owner` ignoring frozen flag.
     public fun deposit_with_ref(transfer_ref: &TransferRef, owner: address, fa: FungibleAsset) acquires DeriveRefPod {
-        let from_primary_store = ensure_primary_store_exists(
+        let to_primary_store = ensure_primary_store_exists(
             owner,
             fungible_asset::transfer_ref_metadata(transfer_ref)
         );
-        fungible_asset::deposit_with_ref(transfer_ref, from_primary_store, fa);
+        fungible_asset::deposit_with_ref(transfer_ref, to_primary_store, fa);
     }
 
     /// Transfer `amount` of FA from the primary store of `from` to that of `to` ignoring frozen flag.
@@ -413,7 +413,7 @@ module aptos_framework::primary_fungible_store {
 
         // User 2 burns their primary store but should still be able to transfer afterward.
         let user_2_primary_store = primary_store(user_2_address, metadata);
-        object::burn_object(user_2, user_2_primary_store);
+        object::burn_object_with_transfer(user_2, user_2_primary_store);
         assert!(object::is_burnt(user_2_primary_store), 0);
         // Balance still works
         assert!(balance(user_2_address, metadata) == 80, 0);
@@ -437,7 +437,7 @@ module aptos_framework::primary_fungible_store {
 
         // User 2 burns their primary store but should still be able to withdraw afterward.
         let user_2_primary_store = primary_store(user_2_address, metadata);
-        object::burn_object(user_2, user_2_primary_store);
+        object::burn_object_with_transfer(user_2, user_2_primary_store);
         assert!(object::is_burnt(user_2_primary_store), 0);
         let coins = withdraw(user_2, metadata, 70);
         assert!(balance(user_2_address, metadata) == 10, 0);

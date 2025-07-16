@@ -36,15 +36,15 @@
   - [x] Reward distribution mechanism
   - [x] Quest completion validation
   - [x] Quest cancellation/refund logic
-- [ ] **Vibe NFT Contract**:
-  - [ ] NFT minting functionality
+- [x] **Vibe NFT Contract**:
+  - [x] NFT minting functionality
   - [ ] Metadata storage integration
   - [ ] Transfer and trading logic
   - [ ] Royalty distribution
-  - [ ] Collection management
-- [ ] **Token Contract ($Lunoa)**:
-  - [ ] Token minting and burning
-  - [ ] Transfer functionality
+  - [x] Collection management
+- [x] **Token Contract ($Lunoa)**:
+  - [x] Token minting and burning
+  - [x] Transfer functionality
   - [ ] Staking mechanisms
   - [ ] Governance voting rights
   - [ ] Reward distribution
@@ -62,7 +62,7 @@
   - [ ] Anti-spam mechanisms
 
 ### 2. Contract Deployment & Testing
-- [ ] Deploy contracts to Aptos testnet
+- [x] Deploy contracts to Aptos testnet
 - [x] Write comprehensive unit tests
 - [ ] Integration testing
 - [ ] Gas optimization
@@ -74,13 +74,13 @@
 ## 🔐 Authentication API Service
 
 ### Auth Endpoints
-- [ ] `POST /api/auth/connect` - Wallet connection and signature verification
-- [ ] `POST /api/auth/verify` - JWT token verification
-- [ ] `POST /api/auth/refresh` - Refresh JWT tokens
-- [ ] `POST /api/auth/logout` - Logout and invalidate tokens
-- [ ] `GET /api/auth/profile` - Get user profile data
-- [ ] `PUT /api/auth/profile` - Update user profile
-- [ ] `DELETE /api/auth/account` - Delete user account
+- [x] `POST /api/auth/connect` - Wallet connection and signature verification
+- [x] `POST /api/auth/verify` - JWT token verification
+- [x] `POST /api/auth/refresh` - Refresh JWT tokens
+- [x] `POST /api/auth/logout` - Logout and invalidate tokens
+- [x] `GET /api/auth/profile` - Get user profile data
+- [x] `PUT /api/auth/profile` - Update user profile
+- [x] `DELETE /api/auth/profile` - Delete user account
 
 ### Wallet Management
 - [ ] Multi-wallet support (Petra, Martian)

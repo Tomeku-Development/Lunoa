@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import pool from '../../../config/database';
+import { getPool } from '../../../config/database';
 import logger from '../../../config/logger';
 import Joi from 'joi';
 
@@ -10,7 +10,7 @@ export const getUserById = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `SELECT 
         id, 
         wallet_address AS "walletAddress", 
@@ -45,7 +45,7 @@ export const getUserStats = async (req: Request, res: Response) => {
 
   try {
     // First, check if the user exists and get their base reputation score
-    const userResult = await pool.query('SELECT reputation_score FROM users WHERE id = $1', [id]);
+    const userResult = await getPool().query('SELECT reputation_score FROM users WHERE id = $1', [id]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -54,9 +54,9 @@ export const getUserStats = async (req: Request, res: Response) => {
 
     // Run all stat queries concurrently
     const [questsResult, followersResult, followingResult] = await Promise.all([
-      pool.query("SELECT COUNT(*) FROM quest_participants WHERE user_id = $1 AND status = 'verified'", [id]),
-      pool.query('SELECT COUNT(*) FROM user_follows WHERE following_id = $1', [id]),
-      pool.query('SELECT COUNT(*) FROM user_follows WHERE follower_id = $1', [id])
+      getPool().query("SELECT COUNT(*) FROM quest_participants WHERE user_id = $1 AND status = 'verified'", [id]),
+      getPool().query('SELECT COUNT(*) FROM user_follows WHERE following_id = $1', [id]),
+      getPool().query('SELECT COUNT(*) FROM user_follows WHERE follower_id = $1', [id])
     ]);
 
     const stats = {
@@ -96,7 +96,7 @@ export const getUserAchievements = async (req: Request, res: Response) => {
       ORDER BY ua.created_at DESC;
     `;
 
-    const result = await pool.query(query, [id]);
+    const result = await getPool().query(query, [id]);
 
     // It's not an error if a user has no achievements, so we just return an empty array.
     res.status(200).json(result.rows);
@@ -114,7 +114,7 @@ export const getUserReputation = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    const result = await pool.query('SELECT reputation_score FROM users WHERE id = $1', [id]);
+    const result = await getPool().query('SELECT reputation_score FROM users WHERE id = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
@@ -163,7 +163,7 @@ export const updateUserSettings = async (req: Request, res: Response) => {
 
   try {
     // Fetch the current settings
-    const currentSettingsResult = await pool.query('SELECT settings FROM users WHERE id = $1', [authenticatedUserId]);
+    const currentSettingsResult = await getPool().query('SELECT settings FROM users WHERE id = $1', [authenticatedUserId]);
 
     if (currentSettingsResult.rows.length === 0) {
       return res.status(404).json({ message: 'User not found.' });
@@ -175,7 +175,7 @@ export const updateUserSettings = async (req: Request, res: Response) => {
     const newSettings = { ...currentSettings, ...value };
 
     // Update the database
-    const result = await pool.query(
+    const result = await getPool().query(
       'UPDATE users SET settings = $1 WHERE id = $2 RETURNING settings',
       [newSettings, authenticatedUserId]
     );
@@ -208,7 +208,7 @@ export const getUserActivity = async (req: Request, res: Response) => {
       LIMIT 50; -- Add pagination in a future implementation
     `;
 
-    const { rows } = await pool.query(query, [userId]);
+    const { rows } = await getPool().query(query, [userId]);
     res.status(200).json(rows);
   } catch (err) {
     logger.error(`Error fetching activity for user ID ${userId}:`, err);
@@ -227,7 +227,7 @@ export const toggleFollowUser = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'You cannot follow yourself.' });
   }
 
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query('BEGIN');
 
@@ -284,7 +284,7 @@ export const getUserFollowers = async (req: Request, res: Response) => {
       WHERE uf.following_id = $1
       ORDER BY uf.created_at DESC;
     `;
-    const result = await pool.query(query, [id]);
+    const result = await getPool().query(query, [id]);
     res.status(200).json(result.rows);
   } catch (error) {
     logger.error(`Error fetching followers for user ${id}:`, error);
@@ -306,7 +306,7 @@ export const getUserFollowing = async (req: Request, res: Response) => {
       WHERE uf.follower_id = $1
       ORDER BY uf.created_at DESC;
     `;
-    const result = await pool.query(query, [id]);
+    const result = await getPool().query(query, [id]);
     res.status(200).json(result.rows);
   } catch (error) {
     logger.error(`Error fetching following list for user ${id}:`, error);

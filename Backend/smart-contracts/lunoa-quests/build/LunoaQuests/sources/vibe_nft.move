@@ -35,14 +35,15 @@ module LunoaQuests::vibe_nft {
         name: String,
         uri: String,
     ) {
-        collection::create_unlimited_collection(
+        let constructor_ref = collection::create_unlimited_collection(
             creator,
             description,
             name,
             option::none<royalty::Royalty>(),
             uri,
         );
-        move_to(creator, VibeCollection {});
+        let collection_signer = object::generate_signer(&constructor_ref);
+        move_to(&collection_signer, VibeCollection {});
     }
 
     /// Mint a new Vibe NFT and transfer it to a recipient.
@@ -54,7 +55,9 @@ module LunoaQuests::vibe_nft {
         uri: String,
         recipient: address,
     ) {
-        assert!(exists<VibeCollection>(signer::address_of(creator)), ECOLLECTION_DOES_NOT_EXIST);
+        let creator_addr = signer::address_of(creator);
+        let collection_object_addr = collection::create_collection_address(&creator_addr, &collection_name);
+        assert!(exists<VibeCollection>(collection_object_addr), ECOLLECTION_DOES_NOT_EXIST);
 
         let token_constructor_ref = token::create(
             creator,

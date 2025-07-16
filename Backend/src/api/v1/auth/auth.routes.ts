@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { register, login, getProfile, updateProfile, deleteProfile, connectWallet, verifyToken, refreshToken, logout } from './auth.controller';
 import { protect } from '../../../middleware/auth.middleware';
+import { verifyWalletSignature } from '../../../middleware/verifyWalletSignature';
 
 const router = Router();
 
@@ -98,6 +99,90 @@ router.post('/login', login);
 
 /**
  * @swagger
+ * /api/v1/auth/connect:
+ *   post:
+ *     summary: Connect a wallet and verify signature
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - walletAddress
+ *               - signature
+ *               - message
+ *             properties:
+ *               walletAddress:
+ *                 type: string
+ *                 description: The user's Aptos wallet address.
+ *               signature:
+ *                 type: string
+ *                 description: The signature of the message, signed by the user's wallet.
+ *               message:
+ *                 type: string
+ *                 description: The message that was signed.
+ *     responses:
+ *       200:
+ *         description: Wallet connected successfully, returns JWT.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: JSON Web Token for authentication.
+ *       400:
+ *         description: Invalid input data.
+ *       401:
+ *         description: Invalid signature or wallet address.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/connect', verifyWalletSignature, connectWallet);
+
+/**
+ * @swagger
+ * /api/v1/auth/verify:
+ *   post:
+ *     summary: Verify a JWT token
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Token is valid.
+ *       401:
+ *         description: Unauthorized, token is invalid or expired.
+ */
+router.post('/verify', protect, verifyToken);
+
+/**
+ * @swagger
+ * /api/v1/auth/refresh:
+ *   post:
+ *     summary: Refresh an access token
+ *     tags: [Auth]
+ *     description: Obtains a new access token using a refresh token stored in an HTTP-only cookie.
+ *     responses:
+ *       200:
+ *         description: New access token generated successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *       401:
+ *         description: Refresh token not found or invalid.
+ */
+router.post('/refresh', refreshToken);
+
+/**
+ * @swagger
  * /api/v1/auth/profile:
  *   get:
  *     summary: Get the current user's profile
@@ -169,101 +254,26 @@ router.route('/profile')
   .put(protect, updateProfile)
   .delete(protect, deleteProfile);
 
-/**
- * @swagger
- * /api/v1/auth/connect:
- *   post:
- *     summary: Connect wallet and get JWT
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - publicKey
- *               - signature
- *               - message
- *             properties:
- *               publicKey:
- *                 type: string
- *                 description: The user's Aptos public key.
- *               signature:
- *                 type: string
- *                 description: The signature of the message.
- *               message:
- *                 type: string
- *                 description: The message that was signed.
- *     responses:
- *       200:
- *         description: Wallet connected successfully, returns JWT token.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 token:
- *                   type: string
- *       400:
- *         description: Missing required fields.
- *       401:
- *         description: Invalid signature.
- *       500:
- *         description: Internal server error.
- */
-router.post('/connect', connectWallet);
 
-/**
- * @swagger
- * /api/v1/auth/verify:
- *   post:
- *     summary: Verify a JWT token
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Token is valid.
- *       401:
- *         description: Not authorized, token failed or not provided.
- */
-router.post('/verify', protect, verifyToken);
 
-/**
- * @swagger
- * /api/v1/auth/refresh:
- *   post:
- *     summary: Refresh the JWT access token
- *     tags: [Auth]
- *     responses:
- *       200:
- *         description: A new access token is returned.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 accessToken:
- *                   type: string
- *       401:
- *         description: Refresh token not found.
- *       403:
- *         description: Invalid refresh token.
- */
-router.post('/refresh', refreshToken);
+
+
+
+
+
 
 /**
  * @swagger
  * /api/v1/auth/logout:
  *   post:
- *     summary: Logout the user
+ *     summary: Log out a user
  *     tags: [Auth]
+ *     description: Clears the refresh token cookie to log the user out.
  *     responses:
  *       200:
- *         description: Logout successful.
+ *         description: Logged out successfully.
+ *       500:
+ *         description: Internal server error.
  */
 router.post('/logout', logout);
 

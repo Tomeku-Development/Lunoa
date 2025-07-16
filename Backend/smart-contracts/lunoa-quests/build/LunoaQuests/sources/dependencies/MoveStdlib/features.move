@@ -634,6 +634,86 @@ module std::features {
         is_enabled(ACCOUNT_ABSTRACTION)
     }
 
+    /// Whether bytecode version v8 is enabled.
+    /// Lifetime: transient
+    ///
+    /// We do not expect use from Move, so for now only for documentation purposes here
+    const VM_BINARY_FORMAT_V8: u64 = 86;
+
+    /// Whether the batch Bulletproofs native functions are available. This is needed because of the introduction of a new native function.
+    /// Lifetime: transient
+    const BULLETPROOFS_BATCH_NATIVES: u64 = 87;
+
+    public fun get_bulletproofs_batch_feature(): u64 { BULLETPROOFS_BATCH_NATIVES }
+
+    public fun bulletproofs_batch_enabled(): bool acquires Features {
+        is_enabled(BULLETPROOFS_BATCH_NATIVES)
+    }
+
+    /// Whether the account abstraction is enabled.
+    ///
+    /// Lifetime: transient
+    const DERIVABLE_ACCOUNT_ABSTRACTION: u64 = 88;
+
+    public fun is_derivable_account_abstraction_enabled(): bool acquires Features {
+        is_enabled(DERIVABLE_ACCOUNT_ABSTRACTION)
+    }
+
+    #[deprecated]
+    public fun is_domain_account_abstraction_enabled(): bool {
+        false
+    }
+
+    /// Whether function values are enabled.
+    /// Lifetime: transient
+    ///
+    /// We do not expect use from Move, so for now only for documentation purposes here
+    const ENABLE_FUNCTION_VALUES: u64 = 89;
+
+    /// Whether new accounts default to the Fungible Asset store.
+    /// Lifetime: transient
+    const NEW_ACCOUNTS_DEFAULT_TO_FA_STORE: u64 = 90;
+
+    public fun get_new_accounts_default_to_fa_store_feature(): u64 { NEW_ACCOUNTS_DEFAULT_TO_FA_STORE }
+
+    public fun new_accounts_default_to_fa_store_enabled(): bool acquires Features {
+        is_enabled(NEW_ACCOUNTS_DEFAULT_TO_FA_STORE)
+    }
+
+    /// Lifetime: transient
+    const DEFAULT_ACCOUNT_RESOURCE: u64 = 91;
+
+    public fun get_default_account_resource_feature(): u64 { DEFAULT_ACCOUNT_RESOURCE }
+
+    public fun is_default_account_resource_enabled(): bool acquires Features {
+        is_enabled(DEFAULT_ACCOUNT_RESOURCE)
+    }
+
+    /// If enabled, JWK consensus should run in per-key mode, where:
+    /// - The consensus is for key-level updates
+    ///   (e.g., "issuer A key 1 should be deleted", "issuer B key 2 should be upserted");
+    /// - transaction type `ValidatorTransaction::ObservedJWKUpdate` is reused;
+    /// - while a key-level update is mostly represented by a new type `KeyLevelUpdate` locally,
+    ///   For simplicity, it is represented by type `ProviderJWKs` (used to represent issuer-level update)
+    ///   in JWK Consensus messages, in validator transactions, and in Move.
+    const JWK_CONSENSUS_PER_KEY_MODE: u64 = 92;
+
+    public fun get_jwk_consensus_per_key_mode_feature(): u64 { JWK_CONSENSUS_PER_KEY_MODE }
+
+    public fun is_jwk_consensus_per_key_mode_enabled(): bool acquires Features {
+        is_enabled(JWK_CONSENSUS_PER_KEY_MODE)
+    }
+
+    /// Whether orderless transactions are enabled.
+    /// Lifetime: transient
+    const ORDERLESS_TRANSACTIONS: u64 = 94;
+
+    public fun get_orderless_transactions_feature(): u64 { ORDERLESS_TRANSACTIONS }
+
+    public fun orderless_transactions_enabled(): bool acquires Features {
+        is_enabled(ORDERLESS_TRANSACTIONS)
+    }
+
     // ============================================================================================
     // Feature Flag Implementation
 
@@ -666,11 +746,11 @@ module std::features {
         if (!exists<Features>(@std)) {
             move_to<Features>(framework, Features { features: vector[] })
         };
-        let features = &mut borrow_global_mut<Features>(@std).features;
-        vector::for_each_ref(&enable, |feature| {
+        let features = &mut Features[@std].features;
+        enable.for_each_ref(|feature| {
             set(features, *feature, true);
         });
-        vector::for_each_ref(&disable, |feature| {
+        disable.for_each_ref(|feature| {
             set(features, *feature, false);
         });
     }
@@ -690,7 +770,7 @@ module std::features {
             features
         } else if (exists<Features>(@std)) {
             // Otherwise, use the currently effective feature flag vec as the baseline, if it exists.
-            borrow_global<Features>(@std).features
+            Features[@std].features
         } else {
             // Otherwise, use an empty feature vec.
             vector[]
@@ -710,7 +790,7 @@ module std::features {
         if (exists<PendingFeatures>(@std)) {
             let PendingFeatures { features } = move_from<PendingFeatures>(@std);
             if (exists<Features>(@std)) {
-                borrow_global_mut<Features>(@std).features = features;
+                Features[@std].features = features;
             } else {
                 move_to(framework, Features { features })
             }
@@ -721,35 +801,35 @@ module std::features {
     /// Check whether the feature is enabled.
     public fun is_enabled(feature: u64): bool acquires Features {
         exists<Features>(@std) &&
-            contains(&borrow_global<Features>(@std).features, feature)
+            contains(&Features[@std].features, feature)
     }
 
     /// Helper to include or exclude a feature flag.
     fun set(features: &mut vector<u8>, feature: u64, include: bool) {
         let byte_index = feature / 8;
         let bit_mask = 1 << ((feature % 8) as u8);
-        while (vector::length(features) <= byte_index) {
-            vector::push_back(features, 0)
+        while (features.length() <= byte_index) {
+            features.push_back(0)
         };
-        let entry = vector::borrow_mut(features, byte_index);
+
         if (include)
-            *entry = *entry | bit_mask
+            features[byte_index] |= bit_mask
         else
-            *entry = *entry & (0xff ^ bit_mask)
+            features[byte_index] &= (0xff ^ bit_mask)
     }
 
     /// Helper to check whether a feature flag is enabled.
     fun contains(features: &vector<u8>, feature: u64): bool {
         let byte_index = feature / 8;
         let bit_mask = 1 << ((feature % 8) as u8);
-        byte_index < vector::length(features) && (*vector::borrow(features, byte_index) & bit_mask) != 0
+        byte_index < features.length() && (features[byte_index] & bit_mask) != 0
     }
 
     fun apply_diff(features: &mut vector<u8>, enable: vector<u64>, disable: vector<u64>) {
-        vector::for_each(enable, |feature| {
+        enable.for_each(|feature| {
             set(features, feature, true);
         });
-        vector::for_each(disable, |feature| {
+        disable.for_each(|feature| {
             set(features, feature, false);
         });
     }

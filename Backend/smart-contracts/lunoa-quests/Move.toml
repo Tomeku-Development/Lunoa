@@ -3,9 +3,9 @@ name = "LunoaQuests"
 version = "1.0.0"
 
 [addresses]
-LunoaQuests = "0x42"
+LunoaQuests = "0x1538d7aa9bca6e560cdbcb1da9c6a9b31bf16e1fd2f485733603df9386367e52"
 aptos_token_objects = "0x4"
 
 [dependencies]
-AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
-AptosTokenObjects = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token-objects", rev = "mainnet" }
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "testnet" }
+AptosTokenObjects = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token-objects", rev = "testnet" }

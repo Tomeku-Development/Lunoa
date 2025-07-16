@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Quest, questSchema } from './quests.model';
 import logger from '../../../config/logger';
-import pool from '../../../config/database';
+import { getPool } from '../../../config/database';
 import AptosService from '../blockchain/aptos.service';
 
 /**
@@ -28,7 +28,7 @@ export const createQuest = async (req: Request, res: Response) => {
     `;
     const values = [title, description, creator_id, reward, currency, type, expires_at];
 
-    const result = await pool.query(query, values);
+    const result = await getPool().query(query, values);
     const newQuest = result.rows[0];
 
     logger.info('New quest created:', newQuest);
@@ -70,7 +70,7 @@ export const getAllQuests = async (req: Request, res: Response) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    const result = await pool.query(query, values);
+    const result = await getPool().query(query, values);
     res.status(200).json(result.rows);
   } catch (dbError) {
     logger.error('Error fetching quests:', dbError);
@@ -86,7 +86,7 @@ export const getQuestById = async (req: Request, res: Response) => {
 
   try {
     const query = 'SELECT * FROM quests WHERE id = $1';
-    const result = await pool.query(query, [id]);
+    const result = await getPool().query(query, [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Quest not found' });
@@ -119,7 +119,7 @@ export const updateQuest = async (req: Request, res: Response) => {
 
   try {
     // First, verify the quest exists and the user is the owner.
-    const verifyResult = await pool.query('SELECT creator_id FROM quests WHERE id = $1', [id]);
+    const verifyResult = await getPool().query('SELECT creator_id FROM quests WHERE id = $1', [id]);
     if (verifyResult.rows.length === 0) {
       return res.status(404).json({ message: 'Quest not found.' });
     }
@@ -136,7 +136,7 @@ export const updateQuest = async (req: Request, res: Response) => {
 
     const query = `UPDATE quests SET ${setClause} WHERE id = $${queryValues.length} RETURNING *`;
 
-    const result = await pool.query(query, queryValues);
+    const result = await getPool().query(query, queryValues);
     const updatedQuest = result.rows[0];
 
     logger.info(`Quest ${id} updated:`, updatedQuest);
@@ -156,7 +156,7 @@ export const deleteQuest = async (req: Request, res: Response) => {
 
   try {
     // First, verify the quest exists and the user is the owner.
-    const verifyResult = await pool.query('SELECT creator_id FROM quests WHERE id = $1', [id]);
+    const verifyResult = await getPool().query('SELECT creator_id FROM quests WHERE id = $1', [id]);
     if (verifyResult.rows.length === 0) {
       return res.status(404).json({ message: 'Quest not found.' });
     }
@@ -166,7 +166,7 @@ export const deleteQuest = async (req: Request, res: Response) => {
     }
 
     // Delete the quest.
-    await pool.query('DELETE FROM quests WHERE id = $1', [id]);
+    await getPool().query('DELETE FROM quests WHERE id = $1', [id]);
 
     logger.info(`Quest ${id} deleted by user ${authenticatedUserId}`);
     res.status(204).send();
@@ -189,7 +189,7 @@ export const joinQuest = async (req: Request, res: Response) => {
 
   try {
     // Check if the quest exists and if the user is the creator
-    const questResult = await pool.query('SELECT creator_id FROM quests WHERE id = $1', [id]);
+    const questResult = await getPool().query('SELECT creator_id FROM quests WHERE id = $1', [id]);
     if (questResult.rows.length === 0) {
       return res.status(404).json({ message: 'Quest not found.' });
     }
@@ -200,7 +200,7 @@ export const joinQuest = async (req: Request, res: Response) => {
 
     // Attempt to add the user to the quest participants
     const insertQuery = 'INSERT INTO quest_participants (quest_id, user_id) VALUES ($1, $2)';
-    await pool.query(insertQuery, [id, authenticatedUserId]);
+    await getPool().query(insertQuery, [id, authenticatedUserId]);
 
     logger.info(`User ${authenticatedUserId} joined quest ${id}`);
     res.status(200).json({ message: 'Successfully joined quest' });
@@ -227,7 +227,7 @@ export const completeQuest = async (req: Request, res: Response) => {
   }
 
   try {
-    const participantResult = await pool.query(
+    const participantResult = await getPool().query(
       'SELECT status FROM quest_participants WHERE quest_id = $1 AND user_id = $2',
       [questId, userId]
     );
@@ -242,7 +242,7 @@ export const completeQuest = async (req: Request, res: Response) => {
       return res.status(409).json({ message: 'Quest completion has already been submitted.' });
     }
 
-    await pool.query(
+    await getPool().query(
       'UPDATE quest_participants SET status = $1, updated_at = NOW() WHERE quest_id = $2 AND user_id = $3',
       ['submitted', questId, userId]
     );
@@ -272,7 +272,7 @@ export const verifyQuestCompletion = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Participant ID is required for verification.' });
   }
 
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query('BEGIN');
 
@@ -349,7 +349,7 @@ export const verifyQuestCompletion = async (req: Request, res: Response) => {
 
     // Trigger reward distribution (after main transaction is committed)
     try {
-      const userResult = await pool.query('SELECT aptos_address FROM users WHERE id = $1', [participantId]);
+      const userResult = await getPool().query('SELECT aptos_address FROM users WHERE id = $1', [participantId]);
       const participantAddress = userResult.rows[0]?.aptos_address;
 
       if (participantAddress) {
@@ -392,7 +392,7 @@ export const getQuestParticipants = async (req: Request, res: Response) => {
       WHERE qp.quest_id = $1
       ORDER BY qp.joined_at ASC;
     `;
-    const result = await pool.query(query, [id]);
+    const result = await getPool().query(query, [id]);
 
     logger.info(`Fetched ${result.rows.length} participants for quest ${id}`);
     res.status(200).json(result.rows);
@@ -425,7 +425,7 @@ export const getNearbyQuests = async (req: Request, res: Response) => {
       FROM quests
       WHERE type = 'location_based' AND status = 'active';
     `;
-    const result = await pool.query(query);
+    const result = await getPool().query(query);
 
     logger.info(`Fetched ${result.rows.length} active location-based quests.`);
     res.status(200).json(result.rows);

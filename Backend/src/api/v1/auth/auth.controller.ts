@@ -2,8 +2,7 @@ import { Request, Response } from 'express';
 import Joi from 'joi';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { Aptos, AptosConfig, Network, Ed25519PublicKey } from '@aptos-labs/ts-sdk';
-import pool from '../../../config/database';
+import { getPool } from '../../../config/database';
 import logger from '../../../config/logger';
 
 const registerSchema = Joi.object({
@@ -27,7 +26,7 @@ export const register = async (req: Request, res: Response) => {
 
   try {
     // 2. Check if user already exists
-    const userExists = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const userExists = await getPool().query('SELECT * FROM users WHERE email = $1', [email]);
     if (userExists.rows.length > 0) {
       return res.status(409).json({ message: 'User with this email already exists.' });
     }
@@ -37,7 +36,7 @@ export const register = async (req: Request, res: Response) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // 4. Insert the new user into the database
-    const newUser = await pool.query(
+    const newUser = await getPool().query(
       'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
       [email, passwordHash]
     );
@@ -63,7 +62,7 @@ export const login = async (req: Request, res: Response) => {
 
   try {
     // 2. Find the user by email
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const result = await getPool().query('SELECT * FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
 
     if (!user) {
@@ -106,38 +105,41 @@ export const login = async (req: Request, res: Response) => {
 // The 'users' table must have a nullable, unique 'wallet_address' TEXT column.
 // The 'email' and 'password_hash' columns should also be nullable.
 
-const aptosConfig = new AptosConfig({ network: Network.TESTNET });
-const aptos = new Aptos(aptosConfig);
+
+
+const connectWalletSchema = Joi.object({
+  walletAddress: Joi.string().required(),
+  walletProvider: Joi.string().valid('petra', 'martian', 'other').required(),
+});
 
 export const connectWallet = async (req: Request, res: Response) => {
-  const { publicKey, signature, message } = req.body;
-
-  // 1. Validate input
-  if (!publicKey || !signature || !message) {
-    return res.status(400).json({ message: 'Missing publicKey, signature, or message' });
+  // 1. Validate request body
+  const { error, value } = connectWalletSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ message: error.details[0].message });
   }
+  const { walletAddress, walletProvider } = value;
 
   try {
-    // 2. Verify signature
-    const pubKey = new Ed25519PublicKey(publicKey);
-    const isVerified = pubKey.verifySignature({ message, signature });
-
-    if (!isVerified) {
-      return res.status(401).json({ message: 'Invalid signature' });
-    }
-
     // 3. Find or create user
-    let userResult = await pool.query('SELECT * FROM users WHERE wallet_address = $1', [publicKey]);
+    // DB Schema Change Required: ALTER TABLE users ADD COLUMN wallet_provider VARCHAR(255);
+    let userResult = await getPool().query('SELECT * FROM users WHERE wallet_address = $1', [walletAddress]);
     let user = userResult.rows[0];
 
     if (!user) {
       // Create new user if wallet address not found
-      const newUserResult = await pool.query(
-        'INSERT INTO users (wallet_address) VALUES ($1) RETURNING *',
-        [publicKey]
+      const newUserResult = await getPool().query(
+        'INSERT INTO users (wallet_address, wallet_provider) VALUES ($1, $2) RETURNING *',
+        [walletAddress, walletProvider]
       );
       user = newUserResult.rows[0];
-      logger.info(`New user created with wallet: ${publicKey}`);
+      logger.info(`New user created with wallet: ${walletAddress} via ${walletProvider}`);
+    } else {
+      // Optionally, update the wallet_provider for existing users
+      if (user.wallet_provider !== walletProvider) {
+        await getPool().query('UPDATE users SET wallet_provider = $1 WHERE id = $2', [walletProvider, user.id]);
+        logger.info(`User ${user.id} updated wallet provider to ${walletProvider}`);
+      }
     }
 
     // Issue Tokens
@@ -183,7 +185,7 @@ export const refreshToken = async (req: Request, res: Response) => {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as { userId: string };
 
     // Optional: Check if user still exists in the database
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId]);
+    const userResult = await getPool().query('SELECT * FROM users WHERE id = $1', [decoded.userId]);
     if (userResult.rows.length === 0) {
         return res.status(401).json({ message: 'User not found.' });
     }
@@ -232,7 +234,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 
   try {
     if (email) {
-      const userExists = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, userId]);
+      const userExists = await getPool().query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, userId]);
       if (userExists.rows.length > 0) {
         return res.status(409).json({ message: 'Email is already in use.' });
       }
@@ -286,7 +288,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     values.push(userId);
     const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = $${queryIndex} RETURNING id, email, wallet_address, bio, avatar_url, website, location, created_at`;
 
-    const result = await pool.query(updateQuery, values);
+    const result = await getPool().query(updateQuery, values);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found.' });
@@ -308,7 +310,7 @@ export const deleteProfile = async (req: Request, res: Response) => {
   }
 
   try {
-    const deleteResult = await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    const deleteResult = await getPool().query('DELETE FROM users WHERE id = $1', [userId]);
 
     if (deleteResult.rowCount === 0) {
       return res.status(404).json({ message: 'User not found.' });
@@ -334,7 +336,7 @@ export const getProfile = async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `SELECT 
         id, 
         email, 

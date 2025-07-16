@@ -33,9 +33,9 @@
 - [x] **Quest Contract**:
   - [x] Quest creation and management
   - [x] Quest verification logic
-  - [ ] Reward distribution mechanism
+  - [x] Reward distribution mechanism
   - [x] Quest completion validation
-  - [ ] Quest cancellation/refund logic
+  - [x] Quest cancellation/refund logic
 - [ ] **Vibe NFT Contract**:
   - [ ] NFT minting functionality
   - [ ] Metadata storage integration

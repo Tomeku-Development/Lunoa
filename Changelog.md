@@ -1,5 +1,22 @@
 # Changelog - 2025-07-16
 
+## Aptos Smart Contract: Vibe NFT
+
+This update delivers a fully functional and tested `vibe_nft.move` smart contract, enabling the creation and minting of Vibe NFTs on the Aptos blockchain. The process involved intensive debugging and verification to ensure correctness and align with the Aptos Object model.
+
+-   **Contract Implementation (`vibe_nft.move`)**:
+    -   Implemented `create_vibe_collection` and `mint_vibe_nft` functions using the `aptos_token_objects` framework.
+    -   Resolved numerous complex compilation errors by identifying and targeting the correct `mainnet` revision of the Aptos framework dependencies.
+    -   Corrected a fundamental logic error in resource handling, ensuring the `VibeCollection` marker resource is attached to the collection object itself, not the creator's account.
+
+-   **Comprehensive Unit Testing (`vibe_nft_tests.move`)**:
+    -   Developed a full test suite covering successful collection creation and NFT minting.
+    -   Verified correct ownership transfer of the newly minted NFT to the recipient.
+    -   Fixed test-specific errors related to string literal formatting in a Move test environment (`.to_string()` vs. `string::utf8(b"...")`).
+
+-   **Build & Configuration**:
+    -   Cleaned up all compiler warnings in the final code for improved quality and maintainability.
+
 ## Aptos Smart Contract: Core Quest Logic
 
 This update marks a major milestone with the successful development and testing of the foundational `LunoaQuests` smart contract on the Aptos blockchain. The contract now supports the complete, basic lifecycle of a quest.
@@ -13,6 +30,9 @@ This update marks a major milestone with the successful development and testing 
     -   Built a robust test suite covering the entire quest lifecycle: creation, joining, and completion.
     -   Resolved multiple complex Move testing errors, including resource initialization, private function access, and correct test account setup.
     -   Implemented a test-only `view` function to allow tests to assert against the contract's internal state, ensuring logic correctness.
+
+-   **Quests Smart Contract:** Implemented and tested a secure treasury and reward distribution mechanism. The contract now fully supports quest creation, joining, and completion with on-chain rewards.
+-   **Quest Cancellation:** Added functionality for quest creators to cancel their quests and receive a full refund, with comprehensive tests.
 
 -   **Build & Configuration**:
     -   Configured the `Move.toml` manifest with the necessary dependencies and named addresses for successful compilation and testing.

@@ -4,15 +4,20 @@
 // including creation, participation, and reward distribution.
 
 module LunoaQuests::quests {
+    #[test_only]
     friend LunoaQuests::quests_tests;
+    #[test_only]
+    friend LunoaQuests::cancellation_tests;
     use std::string::{Self, String};
     use std::signer;
     use aptos_framework::account;
+    use aptos_framework::coin;
     use aptos_framework::event;
-    use aptos_std::table::{Self, Table};
 
-    /// The Lunoa token.
-    struct LunoaCoin {}
+    use aptos_framework::table::{Self, Table};
+    use LunoaQuests::lunoa_coin::{Self, LunoaCoin};
+
+
 
     /// A quest managed by the contract.
     struct Quest has store {
@@ -21,8 +26,13 @@ module LunoaQuests::quests {
         title: String,
         description: String,
         reward_amount: u64,
-        is_active: bool,
+        status: String, // "active", "completed", "canceled"
         participants: Table<address, String> // Participant address to status ("joined", "submitted", etc.)
+    }
+
+    /// Resource to hold the contract's SignerCapability.
+    struct Treasury has key {
+        signer_cap: account::SignerCapability,
     }
 
     /// Resource to store all quests in a central table.
@@ -32,6 +42,7 @@ module LunoaQuests::quests {
         quest_created_events: event::EventHandle<QuestCreatedEvent>,
         quest_joined_events: event::EventHandle<QuestJoinedEvent>,
         quest_completed_events: event::EventHandle<QuestCompletedEvent>,
+        quest_canceled_events: event::EventHandle<QuestCanceledEvent>,
     }
 
     /// Event emitted when a new quest is created.
@@ -55,24 +66,44 @@ module LunoaQuests::quests {
         participant: address,
     }
 
+    /// Event emitted when a quest is canceled.
+    struct QuestCanceledEvent has store, drop {
+        quest_id: u64,
+        creator: address,
+    }
+
     /// The module initializer is called once when the module is published.
     /// It creates the central QuestStore resource.
     fun init_module(sender: &signer) {
+        // Create a resource account for the contract itself to hold the treasury.
+        let seed = b"lunoa_quests_treasury_seed";
+        let (resource_signer, resource_signer_cap) = account::create_resource_account(sender, seed);
+
+
+
+        // Register the resource account for LunoaCoin.
+        lunoa_coin::register(&resource_signer);
+
+        // The SignerCapability is stored in the Treasury resource.
+        move_to(sender, Treasury { signer_cap: resource_signer_cap });
+
         move_to(sender, QuestStore {
             quests: table::new(),
             next_quest_id: 0,
             quest_created_events: account::new_event_handle<QuestCreatedEvent>(sender),
             quest_joined_events: account::new_event_handle<QuestJoinedEvent>(sender),
             quest_completed_events: account::new_event_handle<QuestCompletedEvent>(sender),
+            quest_canceled_events: account::new_event_handle<QuestCanceledEvent>(sender),
         });
     }
 
     /// Creates a new quest.
     /// Creates a new quest. The creator must deposit the reward amount into the contract.
     public entry fun create_quest(creator: &signer, title: String, description: String, reward_amount: u64) acquires QuestStore {
-        // Placeholder: In a real scenario, you'd transfer `reward_amount` of LunoaCoin 
-        // from the creator to a contract-owned vault.
-        // coin::transfer<LunoaCoin>(creator, signer::address_of(borrow_global<QuestStore>(@LunoaQuests)), reward_amount);
+        // The creator must deposit the reward into the contract's treasury.
+        let module_owner_addr = @LunoaQuests;
+        let treasury_addr = account::create_resource_address(&module_owner_addr, b"lunoa_quests_treasury_seed");
+        coin::transfer<LunoaCoin>(creator, treasury_addr, reward_amount);
 
         let creator_addr = signer::address_of(creator);
         let quest_store = borrow_global_mut<QuestStore>(@LunoaQuests);
@@ -84,7 +115,7 @@ module LunoaQuests::quests {
             title: title,
             description: description,
             reward_amount: reward_amount,
-            is_active: true,
+            status: string::utf8(b"active"),
             participants: table::new(),
         };
 
@@ -111,7 +142,7 @@ module LunoaQuests::quests {
 
         let quest = table::borrow_mut(&mut quest_store.quests, quest_id);
 
-        assert!(quest.is_active, 2); // E_QUEST_NOT_ACTIVE
+        assert!(quest.status == string::utf8(b"active"), 2); // E_QUEST_NOT_ACTIVE
         assert!(quest.creator != joiner_addr, 3); // E_CREATOR_CANNOT_JOIN
         assert!(!table::contains(&quest.participants, joiner_addr), 4); // E_ALREADY_JOINED
 
@@ -127,7 +158,7 @@ module LunoaQuests::quests {
     }
 
     /// Allows a participant to complete a quest and claim the reward.
-    public entry fun complete_quest(completer: &signer, quest_id: u64) acquires QuestStore {
+    public entry fun complete_quest(completer: &signer, quest_id: u64) acquires QuestStore, Treasury {
         let completer_addr = signer::address_of(completer);
         let quest_store = borrow_global_mut<QuestStore>(@LunoaQuests);
 
@@ -135,7 +166,7 @@ module LunoaQuests::quests {
 
         let quest = table::borrow_mut(&mut quest_store.quests, quest_id);
 
-        assert!(quest.is_active, 2); // E_QUEST_NOT_ACTIVE
+        assert!(quest.status == string::utf8(b"active"), 2); // E_QUEST_NOT_ACTIVE
         assert!(table::contains(&quest.participants, completer_addr), 5); // E_NOT_A_PARTICIPANT
 
         let participant_status = table::borrow_mut(&mut quest.participants, completer_addr);
@@ -145,9 +176,12 @@ module LunoaQuests::quests {
         *participant_status = string::utf8(b"submitted");
 
         // Transfer reward
-        // In a real implementation, the contract would hold the funds in escrow and transfer from its own account.
-        // This requires a treasury/vault pattern, which is a more advanced topic.
-        // coin::transfer<LunoaCoin>(&contract_signer, completer_addr, quest.reward_amount);
+        // Get the contract's signer capability to authorize the transfer.
+        let treasury = borrow_global<Treasury>(@LunoaQuests);
+        let contract_signer = account::create_signer_with_capability(&treasury.signer_cap);
+
+        // Transfer the reward from the contract's treasury to the completer.
+        coin::transfer<LunoaCoin>(&contract_signer, completer_addr, quest.reward_amount);
 
 
         event::emit_event(
@@ -156,6 +190,35 @@ module LunoaQuests::quests {
                 quest_id: quest_id,
                 completer: completer_addr,
                 reward_paid: quest.reward_amount,
+            }
+        );
+    }
+
+    /// Allows the creator of a quest to cancel it and receive a refund,
+    /// provided no one has joined the quest yet.
+    public entry fun cancel_quest(creator: &signer, quest_id: u64) acquires QuestStore, Treasury {
+        let creator_addr = signer::address_of(creator);
+        let quest_store = borrow_global_mut<QuestStore>(@LunoaQuests);
+
+        assert!(table::contains(&quest_store.quests, quest_id), 1); // E_QUEST_NOT_FOUND
+
+        let quest = table::borrow_mut(&mut quest_store.quests, quest_id);
+
+        assert!(quest.creator == creator_addr, 7); // E_NOT_CREATOR
+        assert!(quest.status == string::utf8(b"active"), 2); // E_QUEST_NOT_ACTIVE
+        // Update quest status
+        quest.status = string::utf8(b"canceled");
+
+        // Refund the reward to the creator
+        let treasury = borrow_global<Treasury>(@LunoaQuests);
+        let contract_signer = account::create_signer_with_capability(&treasury.signer_cap);
+        coin::transfer<LunoaCoin>(&contract_signer, creator_addr, quest.reward_amount);
+
+        event::emit_event(
+            &mut quest_store.quest_canceled_events,
+            QuestCanceledEvent {
+                quest_id: quest_id,
+                creator: creator_addr,
             }
         );
     }

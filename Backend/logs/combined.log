@@ -403,3 +403,6 @@
 {"level":"info","message":"User 3 marked quest 102 as completed.","timestamp":"2025-07-15T18:01:34.199Z"}
 {"level":"info","message":"Quest 103 updated:","timestamp":"2025-07-15T18:01:34.221Z","title":"Updated Quest Title"}
 {"level":"info","message":"Quest 104 deleted by user 6","timestamp":"2025-07-15T18:01:34.242Z"}
+{"level":"info","message":"Server is running at http://localhost:3000","timestamp":"2025-07-15T18:03:44.987Z"}
+{"level":"info","message":"Connected to the database","timestamp":"2025-07-15T18:03:45.287Z"}
+{"level":"info","message":"Database connection test successful.","timestamp":"2025-07-15T18:03:45.288Z"}

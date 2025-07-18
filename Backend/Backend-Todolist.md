@@ -37,8 +37,8 @@
   - [x] Quest completion validation
   - [x] Quest cancellation/refund logic
 - [x] **Vibe NFT Contract**:
-  - [x] NFT minting functionality
-  - [ ] Metadata storage integration
+  - [x] NFT minting functionality (Backend complete)
+  - [x] Metadata storage integration (Backend complete)
   - [ ] Transfer and trading logic
   - [ ] Royalty distribution
   - [x] Collection management
@@ -48,12 +48,12 @@
   - [ ] Staking mechanisms
   - [ ] Governance voting rights
   - [ ] Reward distribution
-- [ ] **Feed Group Contract**:
-  - [ ] Group creation and management
-  - [ ] Member management
-  - [ ] Group governance
-  - [ ] Shared treasury
-  - [ ] Group-specific quests
+- [x] **Feed Group Contract**:
+  - [x] Group creation and management
+  - [x] Member management
+  - [x] Group governance
+  - [x] Shared treasury
+  - [x] Group-specific quests
 - [ ] **Boosting Contract**:
   - [ ] Micro-transaction handling
   - [ ] Boost verification

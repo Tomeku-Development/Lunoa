@@ -2,278 +2,226 @@ import { Router } from 'express';
 import { createQuest, getAllQuests, getQuestById, updateQuest, deleteQuest, joinQuest, completeQuest, verifyQuestCompletion, getQuestParticipants, getNearbyQuests } from './quests.controller';
 import { protect } from '../../../middleware/auth.middleware';
 
-const router = Router();
+// This router is intended to be mounted under a route that includes a :groupId parameter.
+// For example: app.use('/api/v1/feed-groups/:groupId/quests', questRoutes);
+const router = Router({ mergeParams: true });
 
 /**
  * @swagger
- * /api/v1/quests:
+ * tags:
+ *   name: Group Quests
+ *   description: API for managing quests within a specific group.
+ */
+
+/**
+ * @swagger
+ * /api/v1/feed-groups/{groupId}/quests:
  *   post:
- *     summary: Create a new quest
- *     tags: [Quests]
+ *     summary: Create a new quest in a group
+ *     tags: [Group Quests]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - title
- *               - description
- *               - reward
- *               - currency
- *               - type
- *               - expires_at
- *             properties:
- *               title:
- *                 type: string
- *               description:
- *                 type: string
- *               reward:
- *                 type: number
- *               currency:
- *                 type: string
- *                 enum: [Lunoa, USDC]
- *               type:
- *                 type: string
- *                 enum: [social, location_based]
- *               expires_at:
- *                 type: string
- *                 format: date-time
+ *             $ref: '#/components/schemas/QuestCreate'
  *     responses:
  *       201:
  *         description: Quest created successfully.
  *       400:
- *         description: Invalid input data.
+ *         description: Invalid input.
  *       401:
  *         description: Not authorized.
- *       500:
- *         description: Internal server error.
+ *       403:
+ *         description: Forbidden.
  */
 router.post('/', protect, createQuest);
 
 /**
  * @swagger
- * /api/v1/quests/{id}/join:
- *   post:
- *     summary: Join a quest
- *     tags: [Quests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: The ID of the quest to join.
- *     responses:
- *       200:
- *         description: Successfully joined quest.
- *       400:
- *         description: Cannot join your own quest.
- *       401:
- *         description: Not authorized.
- *       404:
- *         description: Quest not found.
- *       409:
- *         description: Already joined this quest.
- *       500:
- *         description: Internal server error.
- */
-router.post('/:id/join', protect, joinQuest);
-
-/**
- * @swagger
- * /api/v1/quests/{id}/complete:
- *   post:
- *     summary: Mark a quest as completed by the participant
- *     tags: [Quests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: The ID of the quest to complete.
- *     responses:
- *       200:
- *         description: Quest marked as completed, awaiting verification.
- *       400:
- *         description: Bad request (e.g., user has not joined the quest).
- *       401:
- *         description: Not authorized.
- *       404:
- *         description: Quest not found.
- *       409:
- *         description: Quest already submitted for completion.
- *       500:
- *         description: Internal server error.
- */
-router.post('/:id/complete', protect, completeQuest);
-
-/**
- * @swagger
- * /api/v1/quests:
+ * /api/v1/feed-groups/{groupId}/quests:
  *   get:
- *     summary: Get all quests with optional filtering
- *     tags: [Quests]
+ *     summary: Get all quests in a group
+ *     tags: [Group Quests]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
  *       - in: query
  *         name: type
  *         schema:
  *           type: string
  *           enum: [social, location_based]
- *         description: Filter quests by type
+ *         description: Filter by quest type.
  *       - in: query
  *         name: status
  *         schema:
  *           type: string
  *           enum: [active, completed, expired]
- *         description: Filter quests by status
- *       - in: query
- *         name: creator_id
- *         schema:
- *           type: string
- *         description: Filter quests by creator ID
+ *         description: Filter by quest status.
  *     responses:
  *       200:
  *         description: A list of quests.
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Quest'
- *       500:
- *         description: Internal server error.
+ *       401:
+ *         description: Not authorized.
+ *       403:
+ *         description: Forbidden.
  */
-router.get('/', getAllQuests);
+router.get('/', protect, getAllQuests);
 
 /**
  * @swagger
- * /api/v1/quests/{id}:
+ * /api/v1/feed-groups/{groupId}/quests/nearby:
  *   get:
- *     summary: Get a specific quest by its ID
- *     tags: [Quests]
+ *     summary: Get nearby quests in a group
+ *     tags: [Group Quests]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: groupId
  *         required: true
  *         schema:
- *           type: string
- *         description: The quest's ID
- *     responses:
- *       200:
- *         description: Quest details.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Quest'
- *       404:
- *         description: Quest not found.
- *       500:
- *         description: Internal server error.
- */
-/**
- * @swagger
- * /api/v1/quests/nearby:
- *   get:
- *     summary: Get quests near a specific location
- *     tags: [Quests]
- *     parameters:
+ *           type: integer
+ *         description: The ID of the group.
  *       - in: query
  *         name: lat
  *         required: true
  *         schema:
  *           type: number
- *           format: float
- *         description: Latitude
+ *         description: Latitude.
  *       - in: query
  *         name: lon
  *         required: true
  *         schema:
  *           type: number
- *           format: float
- *         description: Longitude
+ *         description: Longitude.
  *       - in: query
  *         name: radius
  *         schema:
- *           type: integer
- *         description: Search radius in meters
+ *           type: number
+ *         description: Radius in meters.
  *     responses:
  *       200:
  *         description: A list of nearby quests.
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Quest'
  *       400:
- *         description: Missing latitude or longitude.
- *       500:
- *         description: Internal server error.
+ *         description: Invalid input.
+ *       401:
+ *         description: Not authorized.
+ *       403:
+ *         description: Forbidden.
  */
-router.get('/nearby', getNearbyQuests);
-
-router.get('/:id', getQuestById);
+router.get('/nearby', protect, getNearbyQuests);
 
 /**
  * @swagger
- * /api/v1/quests/{id}:
- *   put:
- *     summary: Update a quest
- *     tags: [Quests]
+ * /api/v1/feed-groups/{groupId}/quests/{id}:
+ *   get:
+ *     summary: Get a specific quest in a group
+ *     tags: [Group Quests]
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The quest's ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Quest'
+ *         description: The ID of the quest.
  *     responses:
  *       200:
- *         description: Quest updated successfully.
- *       400:
- *         description: Invalid input data.
+ *         description: Quest details.
  *       401:
  *         description: Not authorized.
  *       403:
  *         description: Forbidden.
  *       404:
  *         description: Quest not found.
- *       500:
- *         description: Internal server error.
  */
-router.put('/:id', protect, updateQuest);
+router.get('/:id', protect, getQuestById);
 
 /**
  * @swagger
- * /api/v1/quests/{id}:
- *   delete:
- *     summary: Delete a quest
- *     tags: [Quests]
+ * /api/v1/feed-groups/{groupId}/quests/{id}:
+ *   put:
+ *     summary: Update a quest in a group
+ *     tags: [Group Quests]
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The quest's ID
+ *         description: The ID of the quest.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/QuestUpdate'
+ *     responses:
+ *       200:
+ *         description: Quest updated successfully.
+ *       400:
+ *         description: Invalid input.
+ *       401:
+ *         description: Not authorized.
+ *       403:
+ *         description: Forbidden.
+ *       404:
+ *         description: Quest not found.
+ */
+router.put('/:id', protect, updateQuest);
+
+/**
+ * @swagger
+ * /api/v1/feed-groups/{groupId}/quests/{id}:
+ *   delete:
+ *     summary: Delete a quest in a group
+ *     tags: [Group Quests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the quest.
  *     responses:
  *       204:
  *         description: Quest deleted successfully.
@@ -283,125 +231,159 @@ router.put('/:id', protect, updateQuest);
  *         description: Forbidden.
  *       404:
  *         description: Quest not found.
- *       500:
- *         description: Internal server error.
  */
 router.delete('/:id', protect, deleteQuest);
 
 /**
  * @swagger
- * /api/v1/quests/{id}/join:
+ * /api/v1/feed-groups/{groupId}/quests/{id}/join:
  *   post:
- *     summary: Join a quest
- *     tags: [Quests]
+ *     summary: Join a quest in a group
+ *     tags: [Group Quests]
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The quest's ID
+ *         description: The ID of the quest.
  *     responses:
  *       200:
  *         description: Successfully joined quest.
- *       401:
- *         description: Not authorized.
- *       404:
- *         description: Quest not found.
- *       500:
- *         description: Internal server error.
- */
-router.post('/:id/join', protect, joinQuest);
-
-/**
- * @swagger
- * /api/v1/quests/{id}/complete:
- *   post:
- *     summary: Complete a quest and claim rewards
- *     tags: [Quests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: The quest's ID
- *     responses:
- *       200:
- *         description: Quest completed successfully.
- *       401:
- *         description: Not authorized.
- *       404:
- *         description: Quest not found.
- *       500:
- *         description: Internal server error.
- */
-router.post('/:id/complete', protect, completeQuest);
-
-/**
- * @swagger
- * /api/v1/quests/{id}/verify:
- *   post:
- *     summary: Verify quest completion (by quest owner/admin)
- *     tags: [Quests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: The quest's ID
- *     responses:
- *       200:
- *         description: Quest completion verified successfully.
+ *       400:
+ *         description: Cannot join your own quest.
  *       401:
  *         description: Not authorized.
  *       403:
  *         description: Forbidden.
  *       404:
  *         description: Quest not found.
- *       500:
- *         description: Internal server error.
+ *       409:
+ *         description: Already joined this quest.
  */
-router.post('/:id/verify', protect, verifyQuestCompletion);
+router.post('/:id/join', protect, joinQuest);
 
 /**
  * @swagger
- * /api/v1/quests/{id}/participants:
- *   get:
- *     summary: Get a list of participants for a specific quest
- *     tags: [Quests]
+ * /api/v1/feed-groups/{groupId}/quests/{id}/complete:
+ *   post:
+ *     summary: Mark a quest as completed in a group
+ *     tags: [Group Quests]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The quest's ID
+ *         description: The ID of the quest.
+ *     responses:
+ *       200:
+ *         description: Quest marked as completed.
+ *       401:
+ *         description: Not authorized.
+ *       403:
+ *         description: Forbidden.
+ *       404:
+ *         description: Participant not found.
+ *       409:
+ *         description: Quest already submitted.
+ */
+router.post('/:id/complete', protect, completeQuest);
+
+/**
+ * @swagger
+ * /api/v1/feed-groups/{groupId}/quests/{id}/verify:
+ *   post:
+ *     summary: Verify a quest completion in a group
+ *     tags: [Group Quests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the quest.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               participantId:
+ *                 type: string
+ *                 description: The ID of the user whose completion is being verified.
+ *             required:
+ *               - participantId
+ *     responses:
+ *       200:
+ *         description: Quest completion verified.
+ *       400:
+ *         description: Invalid input.
+ *       401:
+ *         description: Not authorized.
+ *       403:
+ *         description: Forbidden.
+ *       404:
+ *         description: Quest or participant not found.
+ */
+router.post('/:id/verify', protect, verifyQuestCompletion);
+
+/**
+ * @swagger
+ * /api/v1/feed-groups/{groupId}/quests/{id}/participants:
+ *   get:
+ *     summary: Get participants for a quest in a group
+ *     tags: [Group Quests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the group.
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the quest.
  *     responses:
  *       200:
  *         description: A list of quest participants.
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   userId: { type: 'string' }
- *                   username: { type: 'string' }
- *                   joined_at: { type: 'string', format: 'date-time' }
+ *       401:
+ *         description: Not authorized.
+ *       403:
+ *         description: Forbidden.
  *       404:
  *         description: Quest not found.
- *       500:
- *         description: Internal server error.
  */
-router.get('/:id/participants', getQuestParticipants);
+router.get('/:id/participants', protect, getQuestParticipants);
 
 export default router;

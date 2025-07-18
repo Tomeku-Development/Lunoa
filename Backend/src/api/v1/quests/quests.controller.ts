@@ -3,11 +3,14 @@ import { Quest, questSchema } from './quests.model';
 import logger from '../../../config/logger';
 import { getPool } from '../../../config/database';
 import AptosService from '../blockchain/aptos.service';
+import * as feedGroupService from '../../../services/feedGroups.service';
+import * as questsService from '../../../services/quests.service';
 
 /**
  * Create a new quest.
  */
 export const createQuest = async (req: Request, res: Response) => {
+  const { groupId: groupIdString } = req.params;
   const { error, value } = questSchema.validate(req.body);
   const creator_id = req.user?.userId;
 
@@ -15,22 +18,23 @@ export const createQuest = async (req: Request, res: Response) => {
     return res.status(400).json({ message: error.details[0].message });
   }
 
+    const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
+
   if (!creator_id) {
     return res.status(401).json({ message: 'Not authorized to create a quest.' });
   }
 
-  try {
-    const { title, description, reward, currency, type, expires_at } = value;
-    const query = `
-      INSERT INTO quests (title, description, creator_id, reward, currency, type, expires_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *;
-    `;
-    const values = [title, description, creator_id, reward, currency, type, expires_at];
+    try {
+    // Verify the user is a member of the group
+    const isMember = await feedGroupService.isMember(groupId, creator_id);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
+    }
 
-    const result = await getPool().query(query, values);
-    const newQuest = result.rows[0];
-
+    const newQuest = await questsService.createQuest({ groupId, creatorId: creator_id, ...value });
     logger.info('New quest created:', newQuest);
     res.status(201).json(newQuest);
   } catch (dbError) {
@@ -43,35 +47,30 @@ export const createQuest = async (req: Request, res: Response) => {
  * Get all quests, with optional filtering.
  */
 export const getAllQuests = async (req: Request, res: Response) => {
+  const { groupId: groupIdString } = req.params;
+  const userId = req.user?.userId;
   const { type, status, creator_id } = req.query;
 
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authorized.' });
+  }
+
   try {
-    let query = 'SELECT * FROM quests';
-    const values: any[] = [];
-    const conditions: string[] = [];
-    let paramIndex = 1;
-
-    if (type) {
-      conditions.push(`type = $${paramIndex++}`);
-      values.push(type);
+    // Verify the user is a member of the group
+    const isMember = await feedGroupService.isMember(groupId, userId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    if (status) {
-      conditions.push(`status = $${paramIndex++}`);
-      values.push(status);
-    }
+    const filters = { type, status, creator_id } as any;
+    const quests = await questsService.getAllQuests(groupId, filters);
+    res.status(200).json(quests);
 
-    if (creator_id) {
-      conditions.push(`creator_id = $${paramIndex++}`);
-      values.push(creator_id);
-    }
-
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    const result = await getPool().query(query, values);
-    res.status(200).json(result.rows);
   } catch (dbError) {
     logger.error('Error fetching quests:', dbError);
     res.status(500).json({ message: 'Failed to fetch quests.' });
@@ -82,19 +81,34 @@ export const getAllQuests = async (req: Request, res: Response) => {
  * Get a specific quest by its ID.
  */
 export const getQuestById = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
+  const userId = req.user?.userId;
+
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authorized.' });
+  }
 
   try {
-    const query = 'SELECT * FROM quests WHERE id = $1';
-    const result = await getPool().query(query, [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Quest not found' });
+    // Verify the user is a member of the group
+    const isMember = await feedGroupService.isMember(groupId, userId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    res.status(200).json(result.rows[0]);
+    const quest = await questsService.getQuestById(questId, groupId);
+
+    if (!quest) {
+      return res.status(404).json({ message: 'Quest not found in this group.' });
+    }
+
+    res.status(200).json(quest);
   } catch (dbError) {
-    logger.error(`Error fetching quest ${id}:`, dbError);
+    logger.error(`Error fetching quest ${questId}:`, dbError);
     res.status(500).json({ message: 'Failed to fetch quest.' });
   }
 };
@@ -103,46 +117,43 @@ export const getQuestById = async (req: Request, res: Response) => {
  * Update a quest.
  */
 export const updateQuest = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
   const authenticatedUserId = req.user?.userId;
+  const { body } = req;
 
-  // Use the same schema for creation, but make all fields optional for updates.
-  const { error, value } = questSchema.fork(Object.keys(questSchema.describe().keys), (schema) => schema.optional()).validate(req.body);
-
-  if (error) {
-    return res.status(400).json({ message: error.details[0].message });
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
   }
 
-  if (Object.keys(value).length === 0) {
+  if (!authenticatedUserId) {
+    return res.status(401).json({ message: 'Not authorized.' });
+  }
+
+  if (Object.keys(body).length === 0) {
     return res.status(400).json({ message: 'No update data provided.' });
   }
 
   try {
-    // First, verify the quest exists and the user is the owner.
-    const verifyResult = await getPool().query('SELECT creator_id FROM quests WHERE id = $1', [id]);
-    if (verifyResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Quest not found.' });
+    const isMember = await feedGroupService.isMember(groupId, authenticatedUserId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    if (verifyResult.rows[0].creator_id !== authenticatedUserId) {
+    const updatedQuest = await questsService.updateQuest(questId, groupId, authenticatedUserId, body);
+
+    if (!updatedQuest) {
+      return res.status(404).json({ message: 'Quest not found in this group.' });
+    }
+
+    logger.info(`Quest ${questId} updated successfully.`);
+    res.status(200).json(updatedQuest);
+
+  } catch (dbError: any) {
+    if (dbError.message === 'FORBIDDEN') {
       return res.status(403).json({ message: 'Forbidden: You can only update your own quests.' });
     }
-
-    // Dynamically build the update query.
-    const updateFields = Object.keys(value);
-    const setClause = updateFields.map((field, index) => `"${field}" = $${index + 1}`).join(', ');
-    const queryValues = Object.values(value);
-    queryValues.push(id);
-
-    const query = `UPDATE quests SET ${setClause} WHERE id = $${queryValues.length} RETURNING *`;
-
-    const result = await getPool().query(query, queryValues);
-    const updatedQuest = result.rows[0];
-
-    logger.info(`Quest ${id} updated:`, updatedQuest);
-    res.status(200).json(updatedQuest);
-  } catch (dbError) {
-    logger.error(`Error updating quest ${id}:`, dbError);
+    logger.error(`Error updating quest ${questId}:`, dbError);
     res.status(500).json({ message: 'Failed to update quest.' });
   }
 };
@@ -151,27 +162,43 @@ export const updateQuest = async (req: Request, res: Response) => {
  * Delete a quest.
  */
 export const deleteQuest = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
   const authenticatedUserId = req.user?.userId;
 
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
+
+  if (!authenticatedUserId) {
+    return res.status(401).json({ message: 'Not authorized.' });
+  }
+
   try {
-    // First, verify the quest exists and the user is the owner.
-    const verifyResult = await getPool().query('SELECT creator_id FROM quests WHERE id = $1', [id]);
-    if (verifyResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Quest not found.' });
+    const isMember = await feedGroupService.isMember(groupId, authenticatedUserId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    if (verifyResult.rows[0].creator_id !== authenticatedUserId) {
+    const success = await questsService.deleteQuest(questId, groupId, authenticatedUserId);
+
+    if (success === null) {
+      return res.status(404).json({ message: 'Quest not found in this group.' });
+    }
+
+    if (success) {
+      logger.info(`Quest ${questId} from group ${groupId} deleted successfully.`);
+      res.status(200).json({ message: 'Quest deleted successfully.' });
+    } else {
+      // This case should ideally not be reached if the service layer is correct
+      res.status(404).json({ message: 'Quest not found.' });
+    }
+
+  } catch (dbError: any) {
+    if (dbError.message === 'FORBIDDEN') {
       return res.status(403).json({ message: 'Forbidden: You can only delete your own quests.' });
     }
-
-    // Delete the quest.
-    await getPool().query('DELETE FROM quests WHERE id = $1', [id]);
-
-    logger.info(`Quest ${id} deleted by user ${authenticatedUserId}`);
-    res.status(204).send();
-  } catch (dbError) {
-    logger.error(`Error deleting quest ${id}:`, dbError);
+    logger.error(`Error deleting quest ${questId} from group ${groupId}:`, dbError);
     res.status(500).json({ message: 'Failed to delete quest.' });
   }
 };
@@ -180,38 +207,42 @@ export const deleteQuest = async (req: Request, res: Response) => {
  * Join a quest.
  */
 export const joinQuest = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
   const authenticatedUserId = req.user?.userId;
+
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
 
   if (!authenticatedUserId) {
     return res.status(401).json({ message: 'Not authorized.' });
   }
 
   try {
-    // Check if the quest exists and if the user is the creator
-    const questResult = await getPool().query('SELECT creator_id FROM quests WHERE id = $1', [id]);
-    if (questResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Quest not found.' });
+    // Verify the user is a member of the group
+    const isMember = await feedGroupService.isMember(groupId, authenticatedUserId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    if (questResult.rows[0].creator_id === authenticatedUserId) {
-      return res.status(400).json({ message: 'You cannot join your own quest.' });
-    }
+    const participantRecord = await questsService.joinQuest(questId, groupId, authenticatedUserId);
 
-    // Attempt to add the user to the quest participants
-    const insertQuery = 'INSERT INTO quest_participants (quest_id, user_id) VALUES ($1, $2)';
-    await getPool().query(insertQuery, [id, authenticatedUserId]);
-
-    logger.info(`User ${authenticatedUserId} joined quest ${id}`);
-    res.status(200).json({ message: 'Successfully joined quest' });
+    logger.info(`User ${authenticatedUserId} joined quest ${questId} in group ${groupId}`);
+    res.status(200).json({ message: 'Successfully joined quest', data: participantRecord });
 
   } catch (dbError: any) {
-    // Handle case where user has already joined (unique constraint violation)
-    if (dbError.code === '23505') { // PostgreSQL unique violation error code
-      return res.status(409).json({ message: 'You have already joined this quest.' });
+    switch (dbError.message) {
+      case 'NOT_FOUND':
+        return res.status(404).json({ message: 'Quest not found in this group.' });
+      case 'CANNOT_JOIN_OWN_QUEST':
+        return res.status(400).json({ message: 'You cannot join your own quest.' });
+      case 'ALREADY_JOINED':
+        return res.status(409).json({ message: 'You have already joined this quest.' });
+      default:
+        logger.error(`Error joining quest ${questId} in group ${groupId}:`, dbError);
+        return res.status(500).json({ message: 'Failed to join quest.' });
     }
-    logger.error(`Error joining quest ${id}:`, dbError);
-    res.status(500).json({ message: 'Failed to join quest.' });
   }
 };
 
@@ -219,40 +250,40 @@ export const joinQuest = async (req: Request, res: Response) => {
  * Complete a quest and claim rewards.
  */
 export const completeQuest = async (req: Request, res: Response) => {
-  const { id: questId } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
   const userId = req.user?.userId;
+
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
 
   if (!userId) {
     return res.status(401).json({ message: 'Not authorized.' });
   }
 
   try {
-    const participantResult = await getPool().query(
-      'SELECT status FROM quest_participants WHERE quest_id = $1 AND user_id = $2',
-      [questId, userId]
-    );
-
-    if (participantResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Participant not found for this quest.' });
+    // Verify the user is a member of the group first
+    const isMember = await feedGroupService.isMember(groupId, userId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    const { status } = participantResult.rows[0];
+    const updatedParticipant = await questsService.completeQuest(questId, groupId, userId);
 
-    if (status === 'submitted' || status === 'verified') {
-      return res.status(409).json({ message: 'Quest completion has already been submitted.' });
+    logger.info(`User ${userId} marked quest ${questId} in group ${groupId} as completed.`);
+    res.status(200).json({ message: 'Quest marked as completed. Awaiting verification.', data: updatedParticipant });
+
+  } catch (dbError: any) {
+    switch (dbError.message) {
+      case 'NOT_A_PARTICIPANT':
+        return res.status(404).json({ message: 'You are not a participant in this quest or it does not exist in this group.' });
+      case 'ALREADY_SUBMITTED':
+        return res.status(409).json({ message: 'Quest completion has already been submitted.' });
+      default:
+        logger.error(`Error completing quest ${questId} for user ${userId} in group ${groupId}:`, dbError);
+        return res.status(500).json({ message: 'Failed to complete quest.' });
     }
-
-    await getPool().query(
-      'UPDATE quest_participants SET status = $1, updated_at = NOW() WHERE quest_id = $2 AND user_id = $3',
-      ['submitted', questId, userId]
-    );
-
-    logger.info(`User ${userId} marked quest ${questId} as completed.`);
-    res.status(200).json({ message: 'Quest marked as completed. Awaiting verification.' });
-
-  } catch (dbError) {
-    logger.error(`Error completing quest ${questId} for user ${userId}:`, dbError);
-    res.status(500).json({ message: 'Failed to complete quest.' });
   }
 };
 
@@ -260,117 +291,48 @@ export const completeQuest = async (req: Request, res: Response) => {
  * Verify quest completion.
  */
 export const verifyQuestCompletion = async (req: Request, res: Response) => {
-  const { id: questId } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
   const verifierId = req.user?.userId;
-  const { participantId } = req.body; // The user whose completion is being verified
+  const { participantId } = req.body;
+
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
 
   if (!verifierId) {
     return res.status(401).json({ message: 'Not authorized.' });
   }
 
   if (!participantId) {
-    return res.status(400).json({ message: 'Participant ID is required for verification.' });
+    return res.status(400).json({ message: 'Participant ID is required.' });
   }
 
-  const client = await getPool().connect();
   try {
-    await client.query('BEGIN');
-
-    const questResult = await client.query('SELECT creator_id, reward_amount FROM quests WHERE id = $1', [questId]);
-    if (questResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'Quest not found.' });
+    const isMember = await feedGroupService.isMember(groupId, verifierId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
     }
 
-    const { creator_id: questCreatorId } = questResult.rows[0];
-    const rewardAmount = parseInt(questResult.rows[0].reward_amount, 10);
-    if (questCreatorId !== verifierId) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ message: 'Forbidden: Only the quest creator can verify completion.' });
-    }
+    const result = await questsService.verifyQuestCompletion(questId, groupId, participantId, verifierId);
 
-    const participantResult = await client.query(
-      'SELECT status FROM quest_participants WHERE quest_id = $1 AND user_id = $2',
-      [questId, participantId]
-    );
-
-    if (participantResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'Participant not found for this quest.' });
-    }
-
-    const participantStatus = participantResult.rows[0].status;
-    if (participantStatus !== 'submitted') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ message: `Cannot verify completion for a participant with status: ${participantStatus}` });
-    }
-
-    await client.query(
-      "UPDATE quest_participants SET status = 'verified' WHERE quest_id = $1 AND user_id = $2",
-      [questId, participantId]
-    );
-
-    const activityMetadata = { questId: questId, participantId: participantId, verifierId: verifierId };
-    await client.query(
-      "INSERT INTO user_activities (user_id, activity_type, metadata) VALUES ($1, 'quest_verified', $2)",
-      [participantId, activityMetadata]
-    );
-
-    // Check for and award 'First Quest Completed' achievement
-    const verifiedQuestsResult = await client.query(
-      "SELECT COUNT(*) FROM quest_participants WHERE user_id = $1 AND status = 'verified'",
-      [participantId]
-    );
-    const verifiedQuestsCount = parseInt(verifiedQuestsResult.rows[0].count, 10);
-
-    if (verifiedQuestsCount === 1) {
-      const achievementId = 1; // ID for 'First Quest Completed'
-      const existingAchievementResult = await client.query(
-        'SELECT 1 FROM user_achievements WHERE user_id = $1 AND achievement_id = $2',
-        [participantId, achievementId]
-      );
-
-      if (existingAchievementResult.rows.length === 0) {
-        await client.query(
-          'INSERT INTO user_achievements (user_id, achievement_id) VALUES ($1, $2)',
-          [participantId, achievementId]
-        );
-
-        const achievementActivityMetadata = { achievementId };
-        await client.query(
-          "INSERT INTO user_activities (user_id, activity_type, metadata) VALUES ($1, 'achievement_unlocked', $2)",
-          [participantId, achievementActivityMetadata]
-        );
-        logger.info(`User ${participantId} unlocked achievement ${achievementId}: 'First Quest Completed'`);
-      }
-    }
-
-    await client.query('COMMIT');
-
-    // Trigger reward distribution (after main transaction is committed)
-    try {
-      const userResult = await getPool().query('SELECT aptos_address FROM users WHERE id = $1', [participantId]);
-      const participantAddress = userResult.rows[0]?.aptos_address;
-
-      if (participantAddress) {
-        logger.info(`Distributing ${rewardAmount} reward to ${participantAddress} for quest ${questId}`);
-        await AptosService.distributeQuestRewards(participantAddress, rewardAmount);
-      } else {
-        logger.warn(`User ${participantId} has no Aptos address linked. Skipping reward distribution for quest ${questId}.`);
-      }
-    } catch (rewardError) {
-      logger.error(`Failed to distribute rewards for quest ${questId} to user ${participantId}:`, rewardError);
-      // Do not fail the request, as verification was successful. The reward can be handled separately.
-    }
     logger.info(`Quest ${questId} completion verified for user ${participantId} by ${verifierId}`);
-    res.status(200).json({ message: 'Quest completion verified successfully.' });
+    res.status(200).json(result);
 
-  } catch (dbError) {
-    await client.query('ROLLBACK');
-    logger.error(`Error verifying quest completion for quest ${questId}:`, dbError);
-    res.status(500).json({ message: 'Failed to verify quest completion.' });
-  } finally {
-    client.release();
+  } catch (error: any) {
+    switch (error.message) {
+      case 'QUEST_NOT_FOUND':
+        return res.status(404).json({ message: 'Quest not found in this group.' });
+      case 'FORBIDDEN':
+        return res.status(403).json({ message: 'Forbidden: Only the quest creator can verify completion.' });
+      case 'PARTICIPANT_NOT_FOUND':
+        return res.status(404).json({ message: 'Participant not found for this quest.' });
+      case 'INVALID_STATUS':
+        return res.status(400).json({ message: 'Cannot verify completion for a participant whose status is not submitted.' });
+      default:
+        logger.error(`Error verifying quest ${questId} for user ${participantId}:`, error);
+        return res.status(500).json({ message: 'Failed to verify quest completion.' });
+    }
   }
 };
 
@@ -378,9 +340,32 @@ export const verifyQuestCompletion = async (req: Request, res: Response) => {
  * Get a list of participants for a specific quest.
  */
 export const getQuestParticipants = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const { groupId: groupIdString, id: questId } = req.params;
+  // @ts-ignore
+  const userId = req.user?.id;
+
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authorized.' });
+  }
 
   try {
+    // Verify the user is a member of the group
+    const isMember = await feedGroupService.isMember(groupId, userId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
+    }
+
+    // Verify the quest exists in the group
+    const questExists = await getPool().query('SELECT 1 FROM quests WHERE id = $1 AND group_id = $2', [questId, groupId]);
+    if (questExists.rows.length === 0) {
+      return res.status(404).json({ message: 'Quest not found in this group.' });
+    }
+
     const query = `
       SELECT
         u.id AS "userId",
@@ -392,13 +377,13 @@ export const getQuestParticipants = async (req: Request, res: Response) => {
       WHERE qp.quest_id = $1
       ORDER BY qp.joined_at ASC;
     `;
-    const result = await getPool().query(query, [id]);
+    const result = await getPool().query(query, [questId]);
 
-    logger.info(`Fetched ${result.rows.length} participants for quest ${id}`);
+    logger.info(`Fetched ${result.rows.length} participants for quest ${questId} in group ${groupId}`);
     res.status(200).json(result.rows);
 
   } catch (dbError) {
-    logger.error(`Error fetching participants for quest ${id}:`, dbError);
+    logger.error(`Error fetching participants for quest ${questId} in group ${groupId}:`, dbError);
     res.status(500).json({ message: 'Failed to fetch quest participants.' });
   }
 };
@@ -407,7 +392,19 @@ export const getQuestParticipants = async (req: Request, res: Response) => {
  * Get quests near a specific location.
  */
 export const getNearbyQuests = async (req: Request, res: Response) => {
+  const { groupId: groupIdString } = req.params;
   const { lat, lon, radius } = req.query; // lat, lon as strings
+  // @ts-ignore
+  const userId = req.user?.id;
+
+  const groupId = parseInt(groupIdString, 10);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ message: 'Invalid Group ID.' });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authorized.' });
+  }
 
   if (!lat || !lon) {
     return res.status(400).json({ message: 'Latitude and longitude are required.' });
@@ -419,19 +416,25 @@ export const getNearbyQuests = async (req: Request, res: Response) => {
   // Here, we fetch all active, location-based quests and let the client filter.
 
   try {
+    // Verify the user is a member of the group
+    const isMember = await feedGroupService.isMember(groupId, userId);
+    if (!isMember) {
+      return res.status(403).json({ message: 'Forbidden: You are not a member of this group.' });
+    }
+
     const query = `
       SELECT
         id, title, description, reward, currency, type, status, latitude, longitude, expires_at AS "expiresAt"
       FROM quests
-      WHERE type = 'location_based' AND status = 'active';
+      WHERE type = 'location_based' AND status = 'active' AND group_id = $1;
     `;
-    const result = await getPool().query(query);
+    const result = await getPool().query(query, [groupId]);
 
-    logger.info(`Fetched ${result.rows.length} active location-based quests.`);
+    logger.info(`Fetched ${result.rows.length} active location-based quests for group ${groupId}.`);
     res.status(200).json(result.rows);
 
   } catch (dbError) {
-    logger.error('Error fetching nearby quests:', dbError);
+    logger.error(`Error fetching nearby quests for group ${groupId}:`, dbError);
     res.status(500).json({ message: 'Failed to fetch nearby quests.' });
   }
 };

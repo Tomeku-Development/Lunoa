@@ -1,15 +1,15 @@
 import request from 'supertest';
 import express, { Request, Response, NextFunction } from 'express';
 import { updateProfile } from '../auth.controller'; // Import the controller directly
-import pool from '../../../../config/database';
+import { getPool } from '../../../../config/database';
 
 // Mock the database module
+const mockQuery = jest.fn();
 jest.mock('../../../../config/database', () => ({
   __esModule: true,
-  default: {
-    query: jest.fn(),
-    connect: jest.fn(),
-  },
+  getPool: jest.fn(() => ({
+    query: mockQuery,
+  })),
 }));
 
 // Mock middleware function
@@ -23,19 +23,18 @@ app.use(express.json());
 // Apply the controller and mock middleware directly to a test route
 app.put('/profile', mockProtect, updateProfile);
 
-// Cast the imported pool to its mocked type
-const mockedPool = pool as jest.Mocked<typeof pool>;
+
 
 describe('Auth Controller - PUT /profile', () => {
   beforeEach(() => {
-    (mockedPool.query as jest.Mock).mockClear();
+    mockQuery.mockClear();
   });
 
   it('should update user profile with a valid aptosAddress', async () => {
     const mockAptosAddress = '0x' + 'a'.repeat(64);
 
     // Mock the database query for the update
-    (mockedPool.query as jest.Mock).mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
 
     const response = await request(app)
       .put('/profile') // Use the direct route
@@ -43,7 +42,7 @@ describe('Auth Controller - PUT /profile', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.message).toBe('Profile updated successfully.');
-    expect(mockedPool.query).toHaveBeenCalledWith(
+    expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE users SET aptos_address = $1'),
       [mockAptosAddress, '1']
     );
@@ -56,6 +55,6 @@ describe('Auth Controller - PUT /profile', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('aptosAddress');
-    expect(mockedPool.query).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
